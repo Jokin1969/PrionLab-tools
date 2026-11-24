@@ -340,7 +340,7 @@
           <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
             <div><strong>1 · Selección</strong>
               <span style="color:#6b7280;font-size:12.5px;"> — ${d.candidates_total || 0} candidatos de ${year}
-              (inventario PubMed + biblioteca) · <strong>${sel.length}</strong> seleccionados</span></div>
+              (inventario PubMed + biblioteca) · <strong id="pv-vc-selcount">${sel.length}</strong> marcados</span></div>
             ${IS_VC_EDITOR ? `<span style="display:flex;gap:6px;align-items:center;">
               <label for="pv-vc-n" style="font-size:12.5px;color:#374151;cursor:help;"
                      title="Cuántos artículos dejará preseleccionados la IA (los mejor puntuados) para citar en el informe. Las VC 2024–2025 citaron unos 38 en 3.500 caracteres: más artículos = más citas pero menos espacio para cada una. Entre 5 y 80. Los que marques o desmarques a mano se respetan.">
@@ -358,10 +358,13 @@
           <p style="font-size:12px;color:#3730a3;margin:6px 0 0;">📌 <strong>Proponer artículos:</strong> todo lo que metáis
             en la colección <em>VC ${year}</em> (grupo <em>Vigilancia competitiva</em> del sidebar) entra aquí seleccionado,
             sea del año que sea. Si después lo desmarcas aquí, se respeta.</p>
-          ${items.length ? `
-            <div style="max-height:340px;overflow-y:auto;margin-top:8px;border-top:1px solid #f3f4f6;">
-              ${items.map(itemRow).join('')}
-            </div>` : ''}
+          <div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#f0fdf4;border:1px solid #bbf7d0;
+                      font-size:12.5px;color:#166534;">
+            <strong>☑ Marcados = los que entran en el informe.</strong> «Agrupar en temas» y «Redactar» trabajan
+            <strong>solo con los marcados</strong>. Los no marcados son la <strong>reserva</strong>: candidatos que la IA
+            valoró y no eligió. No se usan, salvo que los marques tú o que al pedir cambios al borrador la IA
+            recupere alguno.</div>
+          <div id="pv-vc-sel"></div>
           ${IS_VC_EDITOR ? `<form id="pv-vc-add" style="display:flex;gap:6px;margin-top:8px;">
               <input placeholder="Añadir por PMID" style="width:150px;padding:5px 8px;border:1px solid #d1d5db;
                      border-radius:6px;font-size:12.5px;">
@@ -416,11 +419,8 @@
       $('pv-vc-run-select')?.addEventListener('click', () => run(year, 'select', { n: Number($('pv-vc-n').value) || 38 }));
       $('pv-vc-run-themes')?.addEventListener('click', () => run(year, 'themes', { hints: $('pv-vc-hints')?.value || '' }));
       $('pv-vc-run-write')?.addEventListener('click', () => run(year, 'write', { instructions: $('pv-vc-instr').value }));
-      body.querySelectorAll('[data-vc-toggle]').forEach(cb => cb.addEventListener('change', async () => {
-        try { await api(`/vc/items/${cb.dataset.vcToggle}`, { method: 'POST', body: JSON.stringify({ selected: cb.checked }) }); }
-        catch (e) { alert('Error: ' + e.message); cb.checked = !cb.checked; }
-      }));
-      body.querySelectorAll('[data-open-article]').forEach(b => b.addEventListener('click', () => openDetail(b.dataset.openArticle)));
+      _items = items; _itemsTotal = d.candidates_total || 0; _selBusy = busy;
+      paintSelection(year);
       $('pv-vc-add')?.addEventListener('submit', async ev => {
         ev.preventDefault();
         const v = (ev.target.querySelector('input').value || '').trim();
@@ -552,10 +552,107 @@
 
         ${sec('Vuestro control en cada paso', ul([
           'Después de la selección: marcar o desmarcar artículos y añadir otros por PMID (✋). Lo que toquéis a mano se respeta si se vuelve a seleccionar.',
+          '<strong>Filtros de la lista:</strong> cada artículo lleva su origen (📌 Colección VC, 📚 Biblioteca PrionVault, 🌐 Solo PubMed, ✋ Añadidos por PMID). Los chips muestran u ocultan cada origen y «Marcados / Sin marcar» filtra por estado; «Marcar / Desmarcar los visibles» actúa de golpe sobre lo que se ve.',
+          '<strong>Solo los marcados entran en el informe</strong> (temas y redacción). Los no marcados son la reserva. El número de la izquierda es la valoración a fondo de la IA (0–100); «8/10» en gris es solo el cribado por título.',
           'Antes de redactar: escribir indicaciones para la IA («más peso al ensayo clínico», «menos CWD»…).',
           'Después: editar el texto a mano, con contador de caracteres, revisar los avisos y descargarlo en Word.',
         ]))}`;
       $('pv-vc-howto-modal').style.display = 'flex';
+    }
+
+    // ── Step 1 list: origin/state filters, bulk tick, clearer scores ──────
+    const ORIGINS = {
+      col:  { label: '📌 Colección VC',         color: '#7c3aed', tip: 'Artículos que habéis metido en la colección «VC año» de PrionVault' },
+      pmid: { label: '✋ Añadidos por PMID',     color: '#0d9488', tip: 'Añadidos a mano aquí con el campo «Añadir por PMID»' },
+      lib:  { label: '📚 Biblioteca PrionVault', color: '#2563eb', tip: 'Están en PrionVault (publicados ese año) pero no en la colección VC: los propone la app' },
+      pub:  { label: '🌐 Solo PubMed',           color: '#d97706', tip: 'Encontrados por la app en PubMed; no están en PrionVault' },
+    };
+    let _items = [], _itemsTotal = 0, _selBusy = false;
+    const _f = { origins: new Set(Object.keys(ORIGINS)), state: 'all' };
+
+    function visibleItems() {
+      return _items.filter(i => _f.origins.has(i.origin || 'pub') &&
+        (_f.state === 'all' || (_f.state === 'on') === !!i.selected));
+    }
+
+    function paintSelection(year) {
+      const box = $('pv-vc-sel');
+      if (!box) return;
+      const nSel = _items.filter(i => i.selected).length;
+      const cnt = $('pv-vc-selcount'); if (cnt) cnt.textContent = nSel;
+      ['pv-vc-run-themes', 'pv-vc-run-write'].forEach(id => {
+        const b = $(id); if (b && IS_VC_EDITOR && !_selBusy) b.disabled = !nSel;
+      });
+      if (!_items.length) { box.innerHTML = ''; return; }
+      const chip = (on, color) => `padding:3px 10px;border-radius:999px;font-size:12px;cursor:pointer;white-space:nowrap;
+        border:1px solid ${on ? color : '#d1d5db'};background:${on ? color : 'white'};color:${on ? 'white' : '#6b7280'};`;
+      const vis = visibleItems();
+      const originChips = Object.entries(ORIGINS).map(([k, o]) => {
+        const all = _items.filter(i => (i.origin || 'pub') === k);
+        if (!all.length) return '';
+        const on = _f.origins.has(k);
+        return `<button type="button" data-vc-origin="${k}" title="${esc(o.tip)} — clic para ${on ? 'ocultarlos' : 'mostrarlos'}"
+          style="${chip(on, o.color)}">${o.label} · ${all.filter(i => i.selected).length}/${all.length}</button>`;
+      }).join('');
+      const stateChips = [['all', 'Todos'], ['on', '☑ Marcados'], ['off', '☐ Sin marcar']].map(([k, l]) =>
+        `<button type="button" data-vc-state="${k}" style="${chip(_f.state === k, '#0F3460')}">${l}</button>`).join('');
+      box.innerHTML = `
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px;">
+          <span style="font-size:12px;color:#374151;font-weight:600;">Origen:</span>${originChips}
+          <button type="button" data-vc-only-col style="all:unset;cursor:pointer;font-size:12px;color:#7c3aed;text-decoration:underline;">solo mi colección</button>
+          <button type="button" data-vc-all-origins style="all:unset;cursor:pointer;font-size:12px;color:#6b7280;text-decoration:underline;">todos</button>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">
+          <span style="font-size:12px;color:#374151;font-weight:600;">Mostrar:</span>${stateChips}
+          <span style="flex:1;"></span>
+          ${IS_VC_EDITOR ? `
+            <button type="button" data-vc-bulk="1" style="${btnCss(false)}" ${vis.length ? '' : 'disabled'}
+                    title="Marca todos los artículos que se ven ahora con los filtros puestos">☑ Marcar los ${vis.length} visibles</button>
+            <button type="button" data-vc-bulk="0" style="${btnCss(false)}" ${vis.length ? '' : 'disabled'}
+                    title="Desmarca todos los artículos que se ven ahora con los filtros puestos">☐ Desmarcar los ${vis.length} visibles</button>` : ''}
+        </div>
+        <div style="font-size:11.5px;color:#6b7280;margin-top:6px;">
+          En cada chip: marcados/total de ese origen. Número de la izquierda:
+          <strong style="color:#0F3460;">87</strong> = valoración a fondo de la IA (0–100, leyendo abstract, resumen y notas) ·
+          <span style="color:#9ca3af;">8/10</span> = solo cribado por el título (no llegó a la valoración a fondo) ·
+          – = sin valorar todavía.
+          ${_itemsTotal > _items.length ? ` Se muestran los ${_items.length} mejores de ${_itemsTotal} candidatos.` : ''}</div>
+        <div style="max-height:420px;overflow-y:auto;margin-top:6px;border-top:1px solid #f3f4f6;">
+          ${vis.length ? vis.map(itemRow).join('')
+            : '<p style="color:#9ca3af;font-size:12.5px;padding:10px 2px;">Ningún artículo con estos filtros.</p>'}
+        </div>`;
+      box.querySelectorAll('[data-vc-origin]').forEach(b => b.addEventListener('click', () => {
+        const k = b.dataset.vcOrigin;
+        if (_f.origins.has(k)) _f.origins.delete(k); else _f.origins.add(k);
+        paintSelection(year);
+      }));
+      box.querySelector('[data-vc-only-col]')?.addEventListener('click', () => {
+        _f.origins = new Set(['col']); paintSelection(year); });
+      box.querySelector('[data-vc-all-origins]')?.addEventListener('click', () => {
+        _f.origins = new Set(Object.keys(ORIGINS)); _f.state = 'all'; paintSelection(year); });
+      box.querySelectorAll('[data-vc-state]').forEach(b => b.addEventListener('click', () => {
+        _f.state = b.dataset.vcState; paintSelection(year); }));
+      box.querySelectorAll('[data-vc-bulk]').forEach(b => b.addEventListener('click', async () => {
+        const on = b.dataset.vcBulk === '1';
+        const todo = visibleItems().filter(i => !!i.selected !== on);
+        if (!todo.length) return;
+        if (!await pvConfirm(`¿${on ? 'Marcar' : 'Desmarcar'} ${todo.length} artículos?`)) return;
+        try {
+          await api(`/vc/draft/${year}/items`, { method: 'POST',
+            body: JSON.stringify({ ids: todo.map(i => i.id), selected: on }) });
+          todo.forEach(i => { i.selected = on; i.manual = true; });
+        } catch (e) { alert('Error: ' + e.message); }
+        paintSelection(year);
+      }));
+      box.querySelectorAll('[data-vc-toggle]').forEach(cb => cb.addEventListener('change', async () => {
+        const it = _items.find(i => String(i.id) === cb.dataset.vcToggle);
+        try {
+          await api(`/vc/items/${cb.dataset.vcToggle}`, { method: 'POST', body: JSON.stringify({ selected: cb.checked }) });
+          if (it) { it.selected = cb.checked; it.manual = true; }
+        } catch (e) { alert('Error: ' + e.message); }
+        paintSelection(year);
+      }));
+      box.querySelectorAll('[data-open-article]').forEach(b => b.addEventListener('click', () => openDetail(b.dataset.openArticle)));
     }
 
     function itemRow(i) {
@@ -563,17 +660,26 @@
         ? `<button type="button" data-open-article="${i.article_id}" style="all:unset;cursor:pointer;color:#0F3460;font-weight:600;">${esc(i.title)}</button>`
         : `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(i.pmid || '')}/" target="_blank" rel="noopener"
               style="color:#0F3460;font-weight:600;text-decoration:none;">${esc(i.title)}</a>`;
-      const score = i.score != null ? Math.round(i.score) : (i.screen_score != null ? `t${i.screen_score}` : '–');
+      const o = ORIGINS[i.origin] || ORIGINS.pub;
+      const score = i.score != null
+        ? `<span title="Valoración a fondo de la IA: ${Math.round(i.score)} sobre 100" style="color:#0F3460;font-weight:700;">${Math.round(i.score)}</span>`
+        : (i.screen_score != null
+          ? `<span title="Solo cribado por el título: ${esc(String(i.screen_score))} sobre 10. No llegó a la valoración a fondo." style="color:#9ca3af;font-size:11.5px;">${esc(String(i.screen_score))}/10</span>`
+          : '<span title="Sin valorar todavía" style="color:#9ca3af;">–</span>');
+      const who = i.selected
+        ? (i.manual ? '' : ' · <span title="Lo eligió la IA">🤖 elegido por la IA</span>')
+        : (i.manual && i.origin !== 'pub' ? ' · <span title="Lo desmarcasteis a mano; no se volverá a marcar solo">desmarcado a mano</span>' : '');
       return `
-        <label style="display:flex;gap:8px;align-items:flex-start;padding:6px 2px;border-bottom:1px solid #f3f4f6;
-                      font-size:12.5px;${i.selected ? '' : 'opacity:.75;'}">
+        <label style="display:flex;gap:8px;align-items:flex-start;padding:6px 2px 6px 8px;border-bottom:1px solid #f3f4f6;
+                      border-left:3px solid ${o.color};font-size:12.5px;${i.selected ? '' : 'opacity:.72;'}">
           <input type="checkbox" data-vc-toggle="${i.id}" ${i.selected ? 'checked' : ''} ${IS_VC_EDITOR ? '' : 'disabled'}
                  style="margin-top:2px;">
-          <span style="width:34px;flex-shrink:0;text-align:right;color:#0F3460;font-weight:700;">${esc(String(score))}</span>
+          <span style="width:34px;flex-shrink:0;text-align:right;">${score}</span>
           <span style="flex:1;min-width:0;">
             ${link}
             <span style="color:#9ca3af;"> · ${esc(i.journal || '')}${i.quartile ? ' · ' + esc(i.quartile) : ''}
-              ${i.pmid ? ' · PMID ' + esc(i.pmid) : ''}${i.in_library ? ' · 📚' : ''}${i.manual ? ' · ✋' : ''}</span>
+              ${i.pmid ? ' · PMID ' + esc(i.pmid) : ''} ·
+              <span title="${esc(o.tip)}" style="color:${o.color};font-weight:600;">${o.label}</span>${who}</span>
             ${signalChips(i)}
             ${i.reason ? `<div style="color:#6b7280;">${esc(i.reason)}</div>` : ''}
             ${i.theme ? `<div style="color:#7c3aed;font-size:11.5px;">${esc(i.theme)}</div>` : ''}
@@ -594,7 +700,6 @@
       if (sg.rating) out.push(chip(`★ ${sg.rating}`, 'Valoración media en PrionVault'));
       if (sg.milestone) out.push(chip('⭐ hito', 'Marcado como hito'));
       if (i.own_lab) out.push(chip('🏠 propio', 'Publicación del propio grupo'));
-      if ((i.reason || '').startsWith('📌')) out.push(chip('📌 propuesto', 'Lo propusisteis metiéndolo en la colección VC del año'));
       return out.length ? `<div>${out.join('')}</div>` : '';
     }
 

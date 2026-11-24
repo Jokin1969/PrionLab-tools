@@ -1190,11 +1190,47 @@ def get_draft(year: int) -> dict:
     rep["paragraphs"] = paras
     rep["versions"] = list_versions(year)
     rep["check"] = validate(*(paras + ["", "", ""])[:3], allowed) if paras else None
+    in_coll = _collection_article_ids(year)
     for i in items:
         i["article_id"] = str(i["article_id"]) if i["article_id"] else None
+        # Where the paper comes from, for the filters of the selection step.
+        if i["article_id"] in in_coll or (i["reason"] or "").startswith("📌"):
+            i["origin"] = "col"
+        elif (i["reason"] or "").startswith("Añadido manualmente"):
+            i["origin"] = "pmid"
+        elif i["in_library"]:
+            i["origin"] = "lib"
+        else:
+            i["origin"] = "pub"
     rep["items"] = items
     rep["candidates_total"] = total
     return rep
+
+
+def _collection_article_ids(year: int) -> set[str]:
+    """Articles currently in the sidebar collection "VC <year>"."""
+    try:
+        from . import vc
+        cid = vc.ensure_collection(year)
+        with _get_engine().connect() as conn:
+            return {str(r[0]) for r in conn.execute(sql_text(
+                "SELECT article_id FROM prionvault_collection_article "
+                "WHERE collection_id = CAST(:c AS uuid)"), {"c": cid})}
+    except Exception as exc:
+        logger.warning("vc: could not read the collection: %s", exc)
+        return set()
+
+
+def set_selected_many(year: int, item_ids: list[int], selected: bool) -> int:
+    """Tick/untick several items at once (the filtered ones in the UI)."""
+    ids = [int(i) for i in item_ids][:1000]
+    if not ids:
+        return 0
+    with _get_engine().begin() as conn:
+        return conn.execute(sql_text(
+            "UPDATE prionvault_vc_item SET selected = :s, manual = TRUE, updated_at = NOW() "
+            "WHERE year = :y AND id = ANY(:ids)"),
+            {"s": bool(selected), "y": year, "ids": ids}).rowcount
 
 
 def set_selected(item_id: int, selected: bool) -> None:

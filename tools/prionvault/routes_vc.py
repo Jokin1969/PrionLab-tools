@@ -165,6 +165,19 @@ def api_vc_item_toggle(item_id):
     return jsonify({"ok": True})
 
 
+@prionvault_bp.route("/api/vc/draft/<int:year>/items", methods=["POST"])
+@vc_editor_required
+def api_vc_items_bulk(year):
+    """Tick/untick many at once: {"ids": [...], "selected": true|false}."""
+    from .services import vc_generate as g
+    data = request.get_json(silent=True) or {}
+    try:
+        ids = [int(i) for i in (data.get("ids") or [])]
+    except (TypeError, ValueError):
+        return jsonify({"error": "bad_ids"}), 400
+    return jsonify({"ok": True, "changed": g.set_selected_many(year, ids, bool(data.get("selected")))})
+
+
 @prionvault_bp.route("/api/vc/draft/<int:year>/add", methods=["POST"])
 @vc_editor_required
 def api_vc_draft_add(year):

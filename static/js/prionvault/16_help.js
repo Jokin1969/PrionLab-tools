@@ -111,6 +111,14 @@
           <h3>🔭 Vigilancia competitiva</h3>
           <p>Informe anual de vigilancia competitiva que pide el instituto (ISO 56001): título, autores y tres párrafos (¼ contexto del área, ½ avances del año con referencias, ¼ perspectivas para el año siguiente), máximo 3.500 caracteres, Times New Roman 11. Todo está en <strong>Miscelánea → 🔭 Vigilancia competitiva</strong>. A la izquierda hay una entrada por año: los informes desde 2018 y el del año en curso, que es el generador.</p>
 
+          <h4>Paso 1 · Selección: cómo leer la lista</h4>
+          <ul>
+            <li><strong>Marcados = lo que entra en el informe.</strong> «Agrupar en temas» y «Redactar» trabajan solo con los marcados. Los no marcados son la reserva: candidatos valorados que la IA no eligió; no se usan salvo que los marques o que, al pedir cambios al borrador, la IA recupere alguno.</li>
+            <li><strong>Origen de cada artículo</strong> (color y etiqueta): 📌 <em>Colección VC</em> (los que metéis en la colección «VC año»; entran ya marcados al abrir el generador), 📚 <em>Biblioteca PrionVault</em> (están en PrionVault pero no en la colección), 🌐 <em>Solo PubMed</em> (los encuentra la app fuera) y ✋ <em>Añadidos por PMID</em>.</li>
+            <li><strong>Filtros:</strong> los chips de origen muestran u ocultan cada grupo e indican marcados/total; «Todos · Marcados · Sin marcar» filtra por estado; <em>solo mi colección</em> deja a la vista únicamente la colección. <strong>Marcar / Desmarcar los visibles</strong> actúa de golpe sobre lo que se ve con los filtros puestos.</li>
+            <li><strong>Número de la izquierda:</strong> en azul, la valoración a fondo de la IA (0–100, leyendo abstract, resumen IA y notas); en gris «8/10», solo el cribado por título (no llegó a la valoración a fondo); «–», sin valorar todavía.</li>
+          </ul>
+
           <h4>Quién puede hacer qué</h4>
           <ul>
             <li><strong>Cualquier usuario:</strong> leer los informes con sus citas enlazadas, ver las colecciones <em>VC año</em>, consultar el generador y descargar cualquier informe en Word.</li>
