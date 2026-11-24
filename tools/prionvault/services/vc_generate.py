@@ -1196,7 +1196,8 @@ def get_draft(year: int) -> dict:
             "FROM prionvault_vc_report WHERE year = :y"),
             {"y": year}).mappings().first())
         items = [dict(r) for r in conn.execute(sql_text("""
-            SELECT id, pmid, doi, article_id, title, journal, pub_year, quartile, in_library,
+            SELECT id, pmid, doi, article_id, title, left(authors, 160) AS authors, journal, pub_year,
+                   quartile, in_library,
                    screen_score, score, reason, theme, selected, manual, citations, own_lab, signals
               FROM prionvault_vc_item WHERE year = :y
              ORDER BY selected DESC, score DESC NULLS LAST, screen_score DESC NULLS LAST
@@ -1288,6 +1289,40 @@ def save_text(year: int, title: str, authors: str, paragraphs: list[str], by_use
                      summary="Edición manual.", by_user=by_user)
 
 
+_CITE_RE = re.compile(r"(10\.\d{4,9}/[^\s;,)\]]+|\b\d{7,9}\b)")
+
+
+def _add_linked_paragraph(doc, text: str):
+    """A paragraph where every cited PMID / DOI is a real hyperlink (to
+    PubMed / doi.org), so the Word file can be checked with one click."""
+    from docx.opc.constants import RELATIONSHIP_TYPE as RT
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    p = doc.add_paragraph()
+    pos = 0
+    for m in _CITE_RE.finditer(text):
+        ident = m.group(0).rstrip(".")
+        if m.start() > pos:
+            p.add_run(text[pos:m.start()])
+        url = (f"https://doi.org/{ident}" if ident.startswith("10.")
+               else f"https://pubmed.ncbi.nlm.nih.gov/{ident}/")
+        link = OxmlElement("w:hyperlink")
+        link.set(qn("r:id"), doc.part.relate_to(url, RT.HYPERLINK, is_external=True))
+        run = OxmlElement("w:r")
+        rpr = OxmlElement("w:rPr")
+        color = OxmlElement("w:color"); color.set(qn("w:val"), "0563C1")
+        under = OxmlElement("w:u"); under.set(qn("w:val"), "single")
+        rpr.append(color); rpr.append(under)
+        t = OxmlElement("w:t"); t.text = ident
+        t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+        run.append(rpr); run.append(t); link.append(run)
+        p._p.append(link)
+        pos = m.start() + len(ident)
+    if pos < len(text):
+        p.add_run(text[pos:])
+    return p
+
+
 def export_docx(year: int) -> bytes:
     """The report as .docx: Times New Roman 11 pt, as the guidelines ask."""
     import io
@@ -1312,7 +1347,7 @@ def export_docx(year: int) -> bytes:
     p.add_run(f"Authors: {rep['authors']}").italic = True
     for para in (rep["body"] or "").split("\n\n"):
         if para.strip():
-            doc.add_paragraph(para.strip())
+            _add_linked_paragraph(doc, para.strip())
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()

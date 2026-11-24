@@ -746,6 +746,13 @@
             <label style="font-size:11.5px;color:#6b7280;">${lab} · <span id="pv-vc-c${i}"></span></label>
             ${ta('pv-vc-p' + i, p[i], i === 1 ? 12 : 6)}`).join('')}
           <div id="pv-vc-count" style="font-size:12.5px;margin:6px 0;"></div>
+          <details open style="margin:8px 0;border:1px solid #e5e7eb;border-radius:10px;padding:8px 12px;background:#fafafa;">
+            <summary style="cursor:pointer;font-size:12.5px;font-weight:600;color:#0F3460;">
+              👁 Vista con citas enlazadas <span style="font-weight:400;color:#6b7280;">— pasa el ratón por un PMID para ver
+              el artículo; clic para abrirlo (📚 en PrionVault · 🌐 en PubMed si no está en PrionVault)</span></summary>
+            <div id="pv-vc-preview" style="margin-top:8px;font-family:'Times New Roman',serif;font-size:14.5px;line-height:1.55;color:#111827;"></div>
+            <div id="pv-vc-citelist" style="margin-top:8px;"></div>
+          </details>
           ${factcheckPanel(d)}
           ${check && check.problems && check.problems.length ? `
             <div style="font-size:12px;color:#b45309;margin-bottom:6px;">Avisos de la validación:
@@ -769,10 +776,86 @@
       return `
         <details style="font-size:12px;margin:6px 0;" ${left.length ? 'open' : ''}>
           <summary style="cursor:pointer;color:${left.length ? '#b45309' : '#15803d'};">
-            Revisión de hechos: ${fixed.length} corregidas automáticamente${left.length ? ` · ${left.length} por revisar` : ''}</summary>
-          ${left.length ? `<div style="margin-top:4px;color:#b45309;">Por revisar a mano:</div><ul style="margin:2px 0 0 18px;">${left.map(li).join('')}</ul>` : ''}
-          ${fixed.length ? `<div style="margin-top:4px;color:#6b7280;">Detectadas y corregidas:</div><ul style="margin:2px 0 0 18px;color:#6b7280;">${fixed.map(li).join('')}</ul>` : ''}
+            Revisión de hechos: ${fixed.length} detectadas y reescritas por la IA${left.length ? ` · ${left.length} siguen pendientes` : ''}</summary>
+          <div style="margin-top:4px;color:#6b7280;">La IA comprueba cada frase citada contra su artículo. Lo que no cuadra lo
+            reescribe y vuelve a comprobar.</div>
+          ${left.length ? `<div style="margin-top:6px;color:#b45309;"><strong>⚠ Por revisar a mano</strong> — siguen sin cuadrar
+            en el texto actual, después de la corrección automática. Tienes que mirarlas tú:</div><ul style="margin:2px 0 0 18px;">${left.map(li).join('')}</ul>` : ''}
+          ${fixed.length ? `<div style="margin-top:6px;color:#6b7280;"><strong>✓ Detectadas y corregidas</strong> — fallos del primer
+            borrador que la IA ya reescribió. Es solo informativo: la frase entre comillas es la antigua y puede no estar ya en el
+            texto${left.length ? ' (si alguna aparece también arriba, la corrección no bastó)' : ''}:</div><ul style="margin:2px 0 0 18px;color:#6b7280;">${fixed.map(li).join('')}</ul>` : ''}
         </details>`;
+    }
+
+    // Read-only copy of the draft where each cited PMID/DOI is a link with
+    // a hover card: the article in PrionVault when we have it, PubMed if not.
+    const CITE_RE = /(10\.\d{4,9}\/[^\s;,)\]]+|\b\d{7,9}\b)/g;
+    function citeInfo(id) {
+      const k = id.toLowerCase();
+      const it = _items.find(i => String(i.pmid || '') === id || (i.doi || '').toLowerCase() === k);
+      const isDoi = id.startsWith('10.');
+      const inVault = !!(it && it.article_id);
+      return { id, it, isDoi, inVault,
+               url: isDoi ? `https://doi.org/${id}` : `https://pubmed.ncbi.nlm.nih.gov/${id}/` };
+    }
+    function citeCard(c) {
+      const src = c.inVault
+        ? '<span style="color:#2563eb;font-weight:600;">📚 Datos de PrionVault</span> · clic para abrir la ficha'
+        : `<span style="color:#d97706;font-weight:600;">🌐 No está en PrionVault</span> · datos de PubMed · clic para abrirlo en ${c.isDoi ? 'doi.org' : 'PubMed'}`;
+      if (!c.it) return `<div style="font-weight:600;">${c.isDoi ? 'DOI' : 'PMID'} ${esc(c.id)}</div>
+        <div style="color:#b45309;">No está entre los candidatos de este informe.</div><div style="margin-top:4px;">${src}</div>`;
+      return `<div style="font-weight:600;color:#0F3460;">${esc(c.it.title || '')}</div>
+        ${c.it.authors ? `<div style="color:#374151;">${esc(c.it.authors)}${c.it.authors.length >= 160 ? '…' : ''}</div>` : ''}
+        <div style="color:#6b7280;">${esc(c.it.journal || '')}${c.it.pub_year ? ' · ' + c.it.pub_year : ''}${c.it.quartile ? ' · ' + esc(c.it.quartile) : ''}
+          · ${c.isDoi ? 'doi ' : 'PMID '}${esc(c.id)}</div>
+        ${c.it.selected ? '' : '<div style="color:#b45309;">⚠ Citado pero no está marcado en la selección.</div>'}
+        <div style="margin-top:4px;">${src}</div>`;
+    }
+    function paintPreview(paras) {
+      const box = $('pv-vc-preview');
+      if (!box) return;
+      const seen = new Map();
+      box.innerHTML = paras.map(t => '<p style="margin:0 0 8px;">' + t.value.split(CITE_RE).map((part, k) => {
+        if (k % 2 === 0) return esc(part);
+        const id = part.replace(/\.+$/, ''), tail = part.slice(id.length);
+        const c = citeInfo(id); seen.set(id, c);
+        return `<a href="${esc(c.url)}" target="_blank" rel="noopener" data-vc-cite="${esc(id)}"
+          style="color:${c.inVault ? '#2563eb' : '#d97706'};text-decoration:underline;">${esc(id)}</a>${esc(tail)}`;
+      }).join('') + '</p>').join('');
+      const list = $('pv-vc-citelist');
+      if (list) {
+        const all = [...seen.values()];
+        const nV = all.filter(c => c.inVault).length;
+        list.innerHTML = all.length ? `<details style="font-size:12px;">
+          <summary style="cursor:pointer;color:#6b7280;">${all.length} artículos citados · 📚 ${nV} en PrionVault · 🌐 ${all.length - nV} solo en PubMed</summary>
+          <ol style="margin:4px 0 0;padding-left:20px;">${all.map(c => `<li style="margin-bottom:2px;">
+            <a href="${esc(c.url)}" target="_blank" rel="noopener" data-vc-cite="${esc(c.id)}"
+               style="color:${c.inVault ? '#2563eb' : '#d97706'};">${c.inVault ? '📚' : '🌐'} ${c.isDoi ? 'doi' : 'PMID'} ${esc(c.id)}</a>
+            — ${esc(c.it ? c.it.title : 'no está entre los candidatos')}</li>`).join('')}</ol></details>` : '';
+      }
+      let tip = $('pv-vc-tip');
+      if (!tip) {
+        tip = document.createElement('div');
+        tip.id = 'pv-vc-tip';
+        tip.style.cssText = 'position:fixed;z-index:10050;display:none;max-width:420px;padding:10px 12px;border-radius:10px;' +
+          'background:white;border:1px solid #d1d5db;box-shadow:0 8px 24px rgba(0,0,0,.18);font-size:12.5px;line-height:1.4;pointer-events:none;';
+        document.body.appendChild(tip);
+      }
+      document.querySelectorAll('#pv-vc-preview [data-vc-cite], #pv-vc-citelist [data-vc-cite]').forEach(a => {
+        const c = seen.get(a.dataset.vcCite);
+        a.addEventListener('mouseenter', () => {
+          tip.innerHTML = citeCard(c); tip.style.display = 'block';
+          const r = a.getBoundingClientRect(), w = Math.min(420, window.innerWidth - 16);
+          tip.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+          const below = r.bottom + 6;
+          tip.style.top = (below + tip.offsetHeight > window.innerHeight ? Math.max(8, r.top - tip.offsetHeight - 6) : below) + 'px';
+        });
+        a.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+        a.addEventListener('click', ev => {
+          tip.style.display = 'none';
+          if (c.inVault) { ev.preventDefault(); openDetail(c.it.article_id); }
+        });
+      });
     }
 
     function wireDraftEditor(year) {
@@ -786,6 +869,7 @@
         const ids = new Set([...(txt.match(/\b\d{7,9}\b/g) || []), ...(txt.match(/10\.\d{4,9}\/[^\s;,)\]]+/gi) || []).map(x => x.toLowerCase())]);
         $('pv-vc-count').innerHTML = `<strong style="color:${total > 3500 ? '#b91c1c' : '#15803d'};">
           ${total.toLocaleString('es-ES')} / 3.500 caracteres</strong> · ${ids.size} artículos citados`;
+        paintPreview(paras);
       };
       paras.forEach(t => t.addEventListener('input', recount));
       recount();
