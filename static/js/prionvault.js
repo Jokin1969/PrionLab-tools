@@ -20420,7 +20420,12 @@
     async function renderGenerator(year) {
       const body = $('pv-vc-body');
       const needsSetup = !_reports.some(r => r.status !== 'draft');
-      body.innerHTML = '<p style="color:#9ca3af;">Cargando…</p>';
+      // Re-drawing the same year (after a click, or when a step ends): keep
+      // what is on screen and the scroll position instead of jumping to a
+      // "Cargando…" at the top.
+      const same = body.dataset.vcYear === String(year);
+      const sc = vcScroller(), keepTop = same && sc ? sc.scrollTop : 0;
+      if (!same) body.innerHTML = '<p style="color:#9ca3af;">Cargando…</p>';
       let d;
       try { d = await api(`/vc/draft/${year}`); }
       catch (e) { body.innerHTML = `<p style="color:#b91c1c;">Error: ${esc(e.message)}</p>`; return; }
@@ -20438,6 +20443,7 @@
       const check = d.check;
       const dis = busy || !IS_VC_EDITOR ? 'disabled' : '';
 
+      body.dataset.vcYear = String(year);
       body.innerHTML = `
         <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">
           Vigilancia competitiva ${year} · generador</div>
@@ -20452,7 +20458,7 @@
             ${IS_VC_EDITOR ? `<div style="margin-top:8px;"><button type="button" id="pv-vc-setup" style="${btnCss(true)}">
               Cargar informes 2018–2025 y crear sus colecciones</button></div><div id="pv-vc-progress"></div>` : ''}
           </div>` : ''}
-        <div id="pv-vc-genjob">${!busy && d.last_error ? `
+        <div id="pv-vc-genjob" style="position:sticky;top:0;z-index:5;">${busy ? workingHtml(job.phase, job) : ''}${!busy && d.last_error ? `
           <div style="padding:8px 12px;border-radius:8px;background:#fef2f2;color:#b91c1c;font-size:12.5px;">
             ⚠ El último paso (${esc(STEP_NAMES[d.last_error_step] || d.last_error_step || 'proceso')}) no terminó:
             ${esc(d.last_error)}</div>` : ''}</div>
@@ -20603,7 +20609,48 @@
         } catch (e) { alert('Error: ' + e.message); b.disabled = false; b.textContent = '✅ Aceptar versión final'; }
       });
       wireDraftEditor(year);
-      if (busy) startGenPoll(year);
+      if (sc && same) sc.scrollTop = keepTop;
+      if (busy) { lockUI(job.step || _launchedStep); startGenPoll(year); }
+    }
+
+    // ── "Working" state: one job at a time, visibly ───────────────────────
+    const STEP_BTN = { select: 'pv-vc-run-select', narrow: 'pv-vc-narrow', themes: 'pv-vc-run-themes',
+                       write: 'pv-vc-run-write', revise: 'pv-vc-revise' };
+    let _launchedStep = null;
+
+    function vcScroller() {
+      for (let el = $('pv-vc-body'); el && el !== document.body; el = el.parentElement) {
+        const oy = getComputedStyle(el).overflowY;
+        if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight + 4) return el;
+      }
+      return null;
+    }
+
+    function workingHtml(phase, s) {
+      return `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:#1e40af;
+                    color:white;font-size:13px;box-shadow:0 4px 14px rgba(30,64,175,.35);margin-bottom:8px;">
+          <i class="fas fa-spinner fa-spin"></i>
+          <span style="flex:1;"><strong>Trabajando…</strong> ${esc(phase || 'Empezando')}
+            ${s && s.total ? `(${s.done}/${s.total})` : ''}
+            <span style="opacity:.8;"> · el resto de botones se desbloquea al terminar</span></span>
+          ${IS_VC_EDITOR ? `<button type="button" id="pv-vc-stop" style="padding:3px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.6);
+            background:transparent;color:white;cursor:pointer;font-size:12.5px;">Parar</button>` : ''}
+        </div>`;
+    }
+
+    // Block every control of the generator while a step runs, and show the
+    // spinner on the button that started it.
+    function lockUI(step) {
+      const body = $('pv-vc-body');
+      if (!body) return;
+      body.querySelectorAll('button, input, textarea, select').forEach(el => {
+        if (el.id === 'pv-vc-stop' || el.id === 'pv-vc-howto' || el.hasAttribute('data-open-article')) return;
+        el.disabled = true;
+        if (el.tagName === 'BUTTON') { el.style.opacity = '.55'; el.style.cursor = 'not-allowed'; }
+      });
+      const b = $(STEP_BTN[step]);
+      if (b) { b.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Trabajando…'; b.style.opacity = '1'; }
     }
 
     // Free-text revision loop + version history + final acceptance.
@@ -20893,7 +20940,9 @@
           ${factcheckPanel(d)}
           ${check && check.problems && check.problems.length ? `
             <div style="font-size:12px;color:#b45309;margin-bottom:6px;">Avisos de la validación:
-              <ul style="margin:4px 0 0 18px;">${check.problems.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+              <ul style="margin:4px 0 0 18px;">${check.problems.map(x => /^Only \d+ of the/.test(x)
+                ? `<li>El texto cita ${check.selected - (check.uncited || []).length} de los ${check.selected} artículos marcados; lo recomendable es al menos ${check.min_cited}. La lista de los que faltan está arriba, bajo la vista con citas.</li>`
+                : `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             ${IS_VC_EDITOR ? `<button type="button" id="pv-vc-save" style="${btnCss(true)}">Guardar cambios</button>` : ''}
             <a href="${API}/vc/reports/${d.year}/docx" style="${btnCss(false)}text-decoration:none;">⬇ Descargar Word</a>
@@ -21030,8 +21079,14 @@
     }
 
     async function run(year, step, extra = {}) {
+      // React at once: lock everything and show the banner before the
+      // server has even answered.
+      _launchedStep = step;
+      const box = $('pv-vc-genjob');
+      if (box) box.innerHTML = workingHtml('Empezando');
+      lockUI(step);
       try { await api(`/vc/draft/${year}/run`, { method: 'POST', body: JSON.stringify({ step, ...extra }) }); }
-      catch (e) { if (!/already_running/.test(e.message)) { alert('Error: ' + e.message); return; } }
+      catch (e) { if (!/already_running/.test(e.message)) { alert('Error: ' + e.message); renderGenerator(year); return; } }
       _launchedAt = Date.now();
       renderGenerator(year);
     }
@@ -21043,11 +21098,9 @@
         let s;
         try { s = await api(`/vc/draft/status?year=${year}`); } catch (_) { return; }
         const box = $('pv-vc-genjob');
-        if (box) box.innerHTML = s.running ? `
-          <div style="padding:8px 12px;border-radius:8px;background:#eff6ff;color:#1e40af;font-size:12.5px;">
-            ⏳ ${esc(s.phase || 'Trabajando…')} ${s.total ? `(${s.done}/${s.total})` : ''}
-            ${IS_VC_EDITOR ? `<button type="button" id="pv-vc-stop" style="margin-left:8px;${btnCss(false)}padding:2px 8px;">Parar</button>` : ''}
-          </div>` : (s.last_error ? `<div style="padding:8px 12px;border-radius:8px;background:#fef2f2;color:#b91c1c;
+        const waiting = !s.running && Date.now() - _launchedAt < 8000;
+        if (box) box.innerHTML = (s.running || waiting) ? workingHtml(s.running ? s.phase : 'Empezando', s)
+          : (s.last_error ? `<div style="padding:8px 12px;border-radius:8px;background:#fef2f2;color:#b91c1c;
             font-size:12.5px;">Error: ${esc(s.last_error)}</div>` : '');
         $('pv-vc-stop')?.addEventListener('click', () => api('/vc/draft/stop', { method: 'POST' }));
         if (!s.running && Date.now() - _launchedAt >= 8000) {
