@@ -332,6 +332,16 @@
       const check = d.check;
       const dis = busy || !IS_VC_EDITOR ? 'disabled' : '';
 
+      // Identifiers cited in the current draft, and a helper that turns the
+      // PMIDs/DOIs inside a theme summary into links.
+      const citedNow = new Set(((d.paragraphs || []).join(' ').match(/10\.\d{4,9}\/[^\s;,)\]]+|\b\d{7,9}\b/g) || [])
+        .map(x => x.replace(/\.+$/, '').toLowerCase()));
+      const linkIds = txt => String(txt).split(/(10\.\d{4,9}\/[^\s;,)\]]+|\b\d{7,9}\b)/g).map((part, k) => {
+        if (k % 2 === 0) return esc(part);
+        const id = part.replace(/\.+$/, ''), tail = part.slice(id.length);
+        return `<a href="${id.startsWith('10.') ? 'https://doi.org/' + esc(id) : 'https://pubmed.ncbi.nlm.nih.gov/' + esc(id) + '/'}"
+          target="_blank" rel="noopener" style="color:${citedNow.has(id.toLowerCase()) ? '#15803d' : '#2563eb'};">${esc(id)}</a>${esc(tail)}`;
+      }).join('');
       body.dataset.vcYear = String(year);
       body.innerHTML = `
         <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;">
@@ -417,23 +427,48 @@
             : (d.theme_hints ? `<div style="font-size:12px;color:#6b7280;margin-top:6px;">Temas sugeridos: ${esc(d.theme_hints).replace(/\n/g, ' · ')}</div>` : '')}
           <p style="font-size:12px;color:#6b7280;margin:6px 0 0;">Al pulsar el botón, la IA reparte los artículos
             <strong>marcados</strong> en 4–6 temas (tarda en torno a un minuto) y los temas aparecen <strong>aquí debajo</strong>,
-            cada uno con su resumen y sus artículos. El recuadro de arriba es solo para <em>sugerirle</em> temas: puede
-            quedarse vacío.</p>
+            cada uno con su resumen y sus artículos <strong>agrupados por punto</strong> (cada hallazgo o subtema con los artículos
+            que lo respaldan; ✓ = ya citado en el texto del informe). El recuadro de arriba es solo para <em>sugerirle</em>
+            temas: puede quedarse vacío.</p>
           ${!themes.length && !busy ? `<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#f9fafb;
             color:#9ca3af;font-size:12.5px;">Todavía no hay temas.</div>` : ''}
           ${themes.map(t => `
             <div style="margin-top:10px;padding:8px 10px;border-radius:8px;background:#f9fafb;">
               <div style="font-weight:600;color:#0F3460;font-size:13px;">${esc(t.name || '')}
                 <span style="color:#9ca3af;font-weight:400;">· ${(t.pmids || []).length} artículos</span></div>
-              <div style="font-size:12.5px;color:#374151;margin-top:2px;">${esc(t.summary || '')}</div>
+              <div style="font-size:12.5px;color:#374151;margin-top:2px;">${linkIds(t.summary || '')}</div>
               ${t.continuity ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">↺ ${esc(t.continuity)}</div>` : ''}
-              <details style="margin-top:4px;font-size:12px;color:#374151;">
-                <summary style="cursor:pointer;color:#6b7280;">Ver sus artículos</summary>
-                <ul style="margin:4px 0 0;padding-left:18px;">${(t.pmids || []).map(p => {
-                  const it = items.find(i => String(i.pmid) === String(p) || String(i.doi) === String(p));
-                  return `<li>${esc(it ? it.title : p)}${it && !it.selected ? ' <span style="color:#b45309;">(ya no está marcado)</span>' : ''}</li>`;
-                }).join('')}</ul>
-              </details>
+              ${(() => {
+                const pts = (t.points && t.points.length) ? t.points : [{ text: '', pmids: t.pmids || [] }];
+                const all = pts.flatMap(pt => pt.pmids || []);
+                const nIn = all.filter(p => citedNow.has(String(p).toLowerCase())).length;
+                const row = p => {
+                  const it = items.find(i => String(i.pmid) === String(p) || String(i.doi || '').toLowerCase() === String(p).toLowerCase());
+                  const isDoi = String(p).startsWith('10.');
+                  const inText = citedNow.has(String(p).toLowerCase());
+                  const title = it ? (it.article_id
+                    ? `<button type="button" data-open-article="${it.article_id}" title="Abrir la ficha en PrionVault" style="all:unset;cursor:pointer;color:#111827;">${esc(it.title)}</button>`
+                    : esc(it.title)) : '<span style="color:#9ca3af;">(no está en la lista)</span>';
+                  return `<li style="margin-bottom:2px;${inText ? '' : 'color:#374151;'}">
+                    <span title="${inText ? 'Ya está citado en el texto del informe' : 'Todavía no está citado en el texto'}"
+                          style="display:inline-block;width:16px;color:${inText ? '#15803d' : '#d1d5db'};font-weight:700;">${inText ? '✓' : '○'}</span>
+                    <a href="${isDoi ? 'https://doi.org/' + esc(p) : 'https://pubmed.ncbi.nlm.nih.gov/' + esc(p) + '/'}" target="_blank" rel="noopener"
+                       style="color:#2563eb;">${isDoi ? 'doi ' : 'PMID '}${esc(p)}</a> — ${title}
+                    ${inText ? '<span style="color:#15803d;font-size:11px;"> · en el texto</span>' : ''}
+                    ${it && !it.selected ? '<span style="color:#b45309;"> (ya no está marcado)</span>' : ''}</li>`;
+                };
+                return `<details style="margin-top:4px;font-size:12px;color:#374151;">
+                  <summary style="cursor:pointer;color:#6b7280;">Ver sus artículos, agrupados por punto
+                    <span style="color:${nIn ? '#15803d' : '#9ca3af'};"> · ${nIn} de ${all.length} ya citados en el texto</span></summary>
+                  ${pts.map(pt => {
+                    const n = (pt.pmids || []).filter(p => citedNow.has(String(p).toLowerCase())).length;
+                    return `${pt.text ? `<div style="margin-top:8px;font-weight:600;color:#0F3460;">${esc(pt.text)}
+                        <span style="font-weight:400;color:#9ca3af;"> · ${n}/${(pt.pmids || []).length} en el texto</span></div>` : ''}
+                      <ul style="margin:3px 0 0;padding-left:6px;list-style:none;">${(pt.pmids || []).map(row).join('')}</ul>`;
+                  }).join('')}
+                  ${t.points && t.points.length ? '' : '<div style="color:#9ca3af;margin-top:4px;">Estos temas son de antes de la agrupación por puntos: pulsa «Rehacer temas» para verlos agrupados.</div>'}
+                </details>`;
+              })()}
             </div>`).join('')}
           ${(() => {
             if (!themes.length) return '';
@@ -475,7 +510,9 @@
       $('pv-vc-howto')?.addEventListener('click', () => openHowto(year));
       $('pv-vc-run-select')?.addEventListener('click', () => run(year, 'select', { n: Number($('pv-vc-n').value) || 38 }));
       $('pv-vc-run-themes')?.addEventListener('click', () => run(year, 'themes', { hints: $('pv-vc-hints')?.value || '' }));
-      $('pv-vc-run-write')?.addEventListener('click', () => run(year, 'write', { instructions: $('pv-vc-instr').value }));
+      $('pv-vc-run-write')?.addEventListener('click', () => run(year, 'write', { instructions: $('pv-vc-instr').value, n: Number($('pv-vc-n')?.value) || 0 }));
+      // (the selection list is still empty here: it wires its own rows)
+      body.querySelectorAll('[data-open-article]').forEach(b => b.addEventListener('click', () => openDetail(b.dataset.openArticle)));
       _items = items; _itemsTotal = d.candidates_total || 0; _selBusy = busy;
       paintSelection(year);
       $('pv-vc-add')?.addEventListener('submit', async ev => {
@@ -929,7 +966,7 @@
             — ${esc(c.it ? c.it.title : 'no está entre los candidatos')}</li>`).join('')}</ol></details>` : '';
         const isCited = i => seen.has(String(i.pmid || '')) || [...seen.keys()].some(k => k.toLowerCase() === (i.doi || '').toLowerCase() && k);
         const marked = _items.filter(i => i.selected), loose = marked.filter(i => !isCited(i));
-        if (marked.length) list.innerHTML += `<details style="font-size:12px;margin-top:4px;" ${loose.length ? 'open' : ''}>
+        if (marked.length) list.innerHTML += `<details style="font-size:12px;margin-top:4px;">
           <summary style="cursor:pointer;color:${loose.length ? '#b45309' : '#15803d'};">
             ${loose.length ? '⚠' : '✓'} El texto cita ${marked.length - loose.length} de los ${marked.length} artículos marcados${loose.length ? ` · ${loose.length} sin citar` : ''}</summary>
           ${loose.length ? `<div style="color:#6b7280;margin-top:2px;">Para incluirlos, pulsa «Volver a redactar» o pídeselo a la IA en el paso 4

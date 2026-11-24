@@ -651,9 +651,18 @@ narrative should flow (most important first). Use the previous reports as memory
 themes and explicitly connect to what LAST year's report expected for this year (confirmed, partly, or not yet). \
 Every paper must belong to exactly one theme. If the lab suggests themes, use them whenever at least one \
 selected paper fits (keep their wording, translated to a short English name), drop a suggestion only when no paper \
-fits it, and still create other themes for papers that fit none. Answer only JSON:
+fits it, and still create other themes for papers that fit none.
+Inside each theme, split its papers into POINTS: one point per finding or sub-topic that the report could state \
+in one clause (typically 3–8 points per theme, each backed by 1–8 papers; most important first). Every paper of \
+the theme goes in exactly one point; papers that only add background go in a last point named \
+"Otros artículos del tema". Use the identifier exactly as given (the number or the DOI, without "PMID").
+Answer only JSON:
 {"themes": [{"name": "<short English name>", "summary": "<2-3 sentences in Spanish: what happened this year>", \
-"continuity": "<1 sentence in Spanish linking to previous reports/expectations, or empty>", "pmids": ["..."]}]}"""
+"continuity": "<1 sentence in Spanish linking to previous reports/expectations, or empty>", \
+"points": [{"text": "<short phrase in Spanish naming the finding or sub-topic>", "pmids": ["..."]}]}]}"""
+
+
+OTHER_POINT = "Otros artículos del tema"
 
 
 def set_theme_hints(year: int, hints: str) -> None:
@@ -691,11 +700,31 @@ def step_themes(year: int, hints: Optional[str] = None) -> dict:
                    strong=True, max_tokens=8000, timeout=300)
     themes = [t for t in (parsed.get("themes") or []) if isinstance(t, dict)]
     valid = {str(it["pmid"] or it["doi"]) for it in items}
+    seen_ids: set = set()
+
+    def _clean(raw) -> list:
+        # The model sometimes answers "PMID 123" instead of "123"; a paper
+        # belongs to one point of one theme only.
+        out = []
+        for p in raw or []:
+            p = re.sub(r"^\s*(pmid|doi)\s*:?\s*", "", str(p), flags=re.I).strip()
+            if p in valid and p not in seen_ids:
+                seen_ids.add(p)
+                out.append(p)
+        return out
+
     for t in themes:
-        # The model sometimes answers "PMID 123" instead of "123".
-        ids = [re.sub(r"^\s*(pmid|doi)\s*:?\s*", "", str(p), flags=re.I).strip()
-               for p in (t.get("pmids") or [])]
-        t["pmids"] = [p for p in ids if p in valid]
+        points = []
+        for pt in t.get("points") or []:
+            if isinstance(pt, dict):
+                ids = _clean(pt.get("pmids"))
+                if ids:
+                    points.append({"text": str(pt.get("text") or "").strip()[:300], "pmids": ids})
+        rest = _clean(t.get("pmids"))        # listed in the theme but in no point
+        if rest:
+            points.append({"text": OTHER_POINT, "pmids": rest})
+        t["points"] = points
+        t["pmids"] = [p for pt in points for p in pt["pmids"]]
     themes = [t for t in themes if t["pmids"]]
     # Every marked paper must end up in a theme. With long lists the model
     # leaves some out: ask once more only for those, then put any still
@@ -720,6 +749,10 @@ def step_themes(year: int, hints: Optional[str] = None) -> dict:
             k = str(it["pmid"] or it["doi"])
             t = by_name.get(str(again.get(k) or "").strip().lower()) or min(themes, key=lambda x: len(x["pmids"]))
             t["pmids"].append(k)
+            if t["points"] and t["points"][-1]["text"] == OTHER_POINT:
+                t["points"][-1]["pmids"].append(k)
+            else:
+                t["points"].append({"text": OTHER_POINT, "pmids": [k]})
     if not themes:
         # Keep whatever themes were there and say so, instead of silently
         # leaving the section empty.
@@ -770,7 +803,7 @@ Style: match the previous reports provided (scientific but accessible English, f
 papers coherently — each cited paper is woven into the narrative with what it showed and why it matters, grouped \
 by theme; no bullet points, no headings inside paragraphs). Cite ONLY the identifiers you are given, each in \
 brackets right after the statement it supports. The authors chose the selected papers one by one and expect \
-ALL of them cited (when there are more than 40, at least 35, the highest-scored first). That fits only if you \
+them cited — all of them, or at least the number the request states when they cannot all fit. That fits only if you \
 write densely, as the previous reports do: one clause per finding or per group of related papers, 2–5 \
 identifiers in one bracket when they support the same point, no filler. A paper left out is a failure.
 Answer only JSON: {{"title": "...", "intro": "<paragraph 1>", "advances": "<paragraph 2>", "outlook": "<paragraph 3>"}}"""
@@ -805,15 +838,21 @@ def _allowed(items: list[dict]) -> set[str]:
 MAX_EXPECTED_CITED = 40   # what fits in 3,500 characters (the 2024–2025 reports cited ~38)
 
 
-def _min_cited(n_selected: int) -> int:
-    """How many of the selected papers the text must cite: nearly all of
-    them, up to what fits in the length limit."""
+_tl = threading.local()      # per-run options of the job thread (citation target)
+
+
+def _min_cited(n_selected: int, target: Optional[int] = None) -> int:
+    """How many of the selected papers the text must cite: the number the
+    authors asked for ("Nº de artículos a citar"), else nearly all of them
+    up to what fits comfortably in the length limit."""
+    if target:
+        return max(5, min(n_selected, int(target)))
     return max(10, int(min(n_selected, MAX_EXPECTED_CITED) * 0.85))
 
 
 def validate(intro: str, advances: str, outlook: str, allowed: set[str],
              items: Optional[list] = None, coverage: bool = True,
-             keep_ids: Optional[set] = None) -> dict:
+             keep_ids: Optional[set] = None, target: Optional[int] = None) -> dict:
     """`coverage=False` (revisions): report which selected papers are not
     cited but do not demand them — the authors asked for specific changes
     only, not for a rewrite that squeezes more citations in."""
@@ -849,7 +888,9 @@ def validate(intro: str, advances: str, outlook: str, allowed: set[str],
                         "one back, with the finding it supported: " + ", ".join(lost))
     missing = [it for it in (items or [])
                if str(it.get("pmid") or "") not in cset and (it.get("doi") or "").lower() not in cset]
-    need = _min_cited(len(items)) if items else 10
+    if target is None:
+        target = getattr(_tl, "target", None)
+    need = _min_cited(len(items), target) if items else 10
     n_cited = (len(items) - len(missing)) if items else len(cset)
     if n_cited < need and coverage:
         msg = (f"Only {n_cited} of the {len(items) if items else 'provided'} selected papers are cited; "
@@ -899,20 +940,26 @@ def _factcheck(draft: dict, items: list[dict]) -> list[dict]:
 
 def _paper_lines(items: list[dict], themes: list[dict], style: str) -> list[str]:
     by_id = {str(it["pmid"] or it["doi"]): it for it in items}
+    limit = 900 if len(items) <= 60 else 450     # keep the prompt manageable with long selections
     lines, used = [], set()
     for t in themes or [{"name": "Advances", "pmids": list(by_id)}]:
         lines.append(f"## {t.get('name')}: {t.get('summary', '')} {t.get('continuity', '')}")
-        for p in t.get("pmids") or []:
-            it = by_id.get(str(p))
-            if it:
-                used.add(str(p))
-                lines.append(f"- [{_ident(it, style)}] {it['title']} ({it['journal']}). Why: {it['reason']}"
-                             f" Key findings: {_evidence(it, 900)}")
+        # Themes made with "points" (one finding + the papers behind it):
+        # the writer turns each point into one clause citing its papers.
+        for pt in t.get("points") or [{"text": "", "pmids": t.get("pmids") or []}]:
+            if pt.get("text"):
+                lines.append(f"### Point: {pt['text']}")
+            for p in pt.get("pmids") or []:
+                it = by_id.get(str(p))
+                if it and str(p) not in used:
+                    used.add(str(p))
+                    lines.append(f"- [{_ident(it, style)}] {it['title']} ({it['journal']}). Why: {it['reason']}"
+                                 f" Key findings: {_evidence(it, limit)}")
     rest = [it for k, it in by_id.items() if k not in used]
     if rest:   # e.g. papers added after the themes were made
         lines.append("## Other selected papers")
         lines += [f"- [{_ident(it, style)}] {it['title']} ({it['journal']}). Why: {it['reason']}"
-                  f" Key findings: {_evidence(it, 900)}" for it in rest]
+                  f" Key findings: {_evidence(it, limit)}" for it in rest]
     return lines
 
 
@@ -1019,7 +1066,8 @@ def _context(year: int, items: list[dict], style: str) -> str:
             + "\n".join(_paper_lines(items, themes, style)))
 
 
-def step_write(year: int, instructions: str = "", by_user=None) -> dict:
+def step_write(year: int, instructions: str = "", by_user=None, n_target: Optional[int] = None) -> dict:
+    _tl.target = int(n_target) if n_target else None
     if sync_collection(year):
         _build_evidence(year, by_user)
     items = _selected_items(year)
@@ -1030,7 +1078,10 @@ def step_write(year: int, instructions: str = "", by_user=None) -> dict:
     allowed = _allowed(items)
     user = (_context(year, items, style) +
             f"\n\nWrite the {year} report (paragraph 3 looks ahead to {year + 1}). There are {len(items)} "
-            f"selected papers: cite at least {_min_cited(len(items))} of them, ideally all."
+            f"selected papers: cite at least {_min_cited(len(items), _tl.target)} of them"
+            + (", ideally all." if len(items) <= MAX_EXPECTED_CITED else
+               " — they cannot all fit: turn each '### Point' into one clause citing the 1–4 strongest papers "
+               "of that point in one bracket, covering every theme and as many points as the length allows.")
             + (f"\n\nAdditional instructions from the authors: {instructions}" if instructions else ""))
     _set(phase="Redactando", done=0, total=0)
     draft = _call(system, user, strong=True, max_tokens=4000)
@@ -1038,7 +1089,7 @@ def step_write(year: int, instructions: str = "", by_user=None) -> dict:
         raise ValueError("La IA no devolvió el texto del informe. Vuelve a pulsar «Redactar».")
     draft, check, rounds = _comply(draft, user, system, allowed, items=items)
     draft, check, fixed, issues = _factcheck_and_fix(draft, check, user, system, items, allowed)
-    info = {**check, "attempts": rounds + 1, "instructions": instructions[:500],
+    info = {**check, "attempts": rounds + 1, "instructions": instructions[:500], "target": _tl.target,
             "factcheck_fixed": fixed, "factcheck_remaining": issues}
     _save_draft(year, draft, kind="generated", request=instructions, info=info, by_user=by_user,
                 summary="Informe redactado por la IA.")
@@ -1399,7 +1450,8 @@ def get_draft(year: int) -> dict:
     allowed = _allowed([i for i in items if i["selected"]])
     rep["paragraphs"] = paras
     rep["versions"] = list_versions(year)
-    rep["check"] = (validate(*(paras + ["", "", ""])[:3], allowed, [i for i in items if i["selected"]])
+    rep["check"] = (validate(*(paras + ["", "", ""])[:3], allowed, [i for i in items if i["selected"]],
+                             target=((rep.get("pipeline") or {}).get("write") or {}).get("target") or 0)
                     if paras else None)
     in_coll = _collection_article_ids(year)
     for i in items:

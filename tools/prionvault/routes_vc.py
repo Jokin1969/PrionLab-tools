@@ -162,6 +162,10 @@ def api_vc_draft_run(year):
     elif step == "write":
         kwargs["instructions"] = str(body.get("instructions") or "")[:2000]
         kwargs["by_user"] = _viewer_id()
+        try:
+            kwargs["n_target"] = max(5, min(80, int(body.get("n")))) if body.get("n") else None
+        except (TypeError, ValueError):
+            kwargs["n_target"] = None
     elif step == "revise":
         kwargs["request"] = str(body.get("request") or "")[:4000]
         kwargs["by_user"] = _viewer_id()
