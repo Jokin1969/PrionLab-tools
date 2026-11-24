@@ -103,7 +103,9 @@ def api_vc_ref_pick(ref_id):
 @login_required
 def api_vc_draft(year):
     from .services import vc_generate as g
-    return jsonify({**g.get_draft(year), "job": g.get_status()})
+    return jsonify({**g.get_draft(year), "job": g.get_status(),
+                    "last_error": g.last_error(year) or None,
+                    "last_error_step": g.last_error_step(year) or None})
 
 
 @prionvault_bp.route("/api/vc/draft/<int:year>/run", methods=["POST"])

@@ -620,10 +620,18 @@ def step_themes(year: int, hints: Optional[str] = None) -> dict:
                    f"SELECTED PAPERS OF {year}:\n{papers}"
                    + (f"\n\nTHEMES SUGGESTED BY THE LAB (one per line):\n{hints}" if hints.strip() else ""),
                    strong=True, max_tokens=4000)
-    themes = parsed.get("themes") or []
+    themes = [t for t in (parsed.get("themes") or []) if isinstance(t, dict)]
     valid = {str(it["pmid"] or it["doi"]) for it in items}
     for t in themes:
-        t["pmids"] = [str(p) for p in (t.get("pmids") or []) if str(p) in valid]
+        # The model sometimes answers "PMID 123" instead of "123".
+        ids = [re.sub(r"^\s*(pmid|doi)\s*:?\s*", "", str(p), flags=re.I).strip()
+               for p in (t.get("pmids") or [])]
+        t["pmids"] = [p for p in ids if p in valid]
+    themes = [t for t in themes if t["pmids"]]
+    if not themes:
+        # Keep whatever themes were there and say so, instead of silently
+        # leaving the section empty.
+        raise ValueError("La IA no devolvió ningún tema válido. Vuelve a pulsar «Agrupar en temas».")
     with _get_engine().begin() as conn:
         conn.execute(sql_text(
             "UPDATE prionvault_vc_report SET themes = CAST(:t AS jsonb), updated_at = NOW() WHERE year = :y"),
@@ -1123,6 +1131,16 @@ def _remember_error(year: int, step: str, error: str) -> None:
         _log(year, "last_error", {"error": error, "step": step})
     except Exception:
         logger.debug("vc: could not store last_error", exc_info=True)
+
+
+def last_error_step(year: int) -> str:
+    try:
+        with _get_engine().connect() as conn:
+            return conn.execute(sql_text(
+                "SELECT pipeline #>> '{last_error,step}' FROM prionvault_vc_report WHERE year = :y"),
+                {"y": year}).scalar() or ""
+    except Exception:
+        return ""
 
 
 def last_error(year: int) -> str:

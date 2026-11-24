@@ -20409,7 +20409,12 @@
       const sel = items.filter(i => i.selected);
       const themes = Array.isArray(d.themes) ? d.themes : [];
       const job = d.job || {};
-      const busy = !!job.running;
+      // Just after launching a step the status may still say "not running"
+      // (the other server process answers before the job has registered):
+      // keep polling for a few seconds instead of believing it.
+      const justLaunched = Date.now() - _launchedAt < 8000;
+      const busy = !!job.running || justLaunched;
+      const STEP_NAMES = { select: 'Selección', themes: 'Temas', write: 'Redacción', revise: 'Cambios' };
       const check = d.check;
       const dis = busy || !IS_VC_EDITOR ? 'disabled' : '';
 
@@ -20427,7 +20432,10 @@
             ${IS_VC_EDITOR ? `<div style="margin-top:8px;"><button type="button" id="pv-vc-setup" style="${btnCss(true)}">
               Cargar informes 2018–2025 y crear sus colecciones</button></div><div id="pv-vc-progress"></div>` : ''}
           </div>` : ''}
-        <div id="pv-vc-genjob"></div>
+        <div id="pv-vc-genjob">${!busy && d.last_error ? `
+          <div style="padding:8px 12px;border-radius:8px;background:#fef2f2;color:#b91c1c;font-size:12.5px;">
+            ⚠ El último paso (${esc(STEP_NAMES[d.last_error_step] || d.last_error_step || 'proceso')}) no terminó:
+            ${esc(d.last_error)}</div>` : ''}</div>
 
         <section style="border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;margin:12px 0;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
@@ -20472,18 +20480,40 @@
                  ${dis || (!sel.length ? 'disabled' : '')}>${themes.length ? 'Rehacer temas' : 'Agrupar en temas'}</button>` : ''}
           </div>
           ${IS_VC_EDITOR ? `<textarea id="pv-vc-hints" rows="3"
+              aria-label="Temas sugeridos (opcional)"
               title="La IA los usará si algún artículo seleccionado encaja; si no encaja ninguno, los omite. Además puede crear otros temas para los artículos que no encajen en ninguno. Se guardan para este año."
               placeholder="Temas sugeridos (opcional, uno por línea), p. ej.:\nTerapias antisentido (ASO)\nDiagnóstico precoz con RT-QuIC\nCWD en Europa"
               style="width:100%;margin-top:8px;padding:6px 8px;border:1px solid #d1d5db;border-radius:8px;
                      font-size:12.5px;box-sizing:border-box;">${esc(d.theme_hints || '')}</textarea>`
             : (d.theme_hints ? `<div style="font-size:12px;color:#6b7280;margin-top:6px;">Temas sugeridos: ${esc(d.theme_hints).replace(/\n/g, ' · ')}</div>` : '')}
+          <p style="font-size:12px;color:#6b7280;margin:6px 0 0;">Al pulsar el botón, la IA reparte los artículos
+            <strong>marcados</strong> en 4–6 temas (tarda en torno a un minuto) y los temas aparecen <strong>aquí debajo</strong>,
+            cada uno con su resumen y sus artículos. El recuadro de arriba es solo para <em>sugerirle</em> temas: puede
+            quedarse vacío.</p>
+          ${!themes.length && !busy ? `<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#f9fafb;
+            color:#9ca3af;font-size:12.5px;">Todavía no hay temas.</div>` : ''}
           ${themes.map(t => `
             <div style="margin-top:10px;padding:8px 10px;border-radius:8px;background:#f9fafb;">
               <div style="font-weight:600;color:#0F3460;font-size:13px;">${esc(t.name || '')}
                 <span style="color:#9ca3af;font-weight:400;">· ${(t.pmids || []).length} artículos</span></div>
               <div style="font-size:12.5px;color:#374151;margin-top:2px;">${esc(t.summary || '')}</div>
               ${t.continuity ? `<div style="font-size:12px;color:#6b7280;margin-top:2px;">↺ ${esc(t.continuity)}</div>` : ''}
+              <details style="margin-top:4px;font-size:12px;color:#374151;">
+                <summary style="cursor:pointer;color:#6b7280;">Ver sus artículos</summary>
+                <ul style="margin:4px 0 0;padding-left:18px;">${(t.pmids || []).map(p => {
+                  const it = items.find(i => String(i.pmid) === String(p) || String(i.doi) === String(p));
+                  return `<li>${esc(it ? it.title : p)}${it && !it.selected ? ' <span style="color:#b45309;">(ya no está marcado)</span>' : ''}</li>`;
+                }).join('')}</ul>
+              </details>
             </div>`).join('')}
+          ${(() => {
+            if (!themes.length) return '';
+            const inTheme = new Set(themes.flatMap(t => (t.pmids || []).map(String)));
+            const loose = sel.filter(i => !inTheme.has(String(i.pmid)) && !inTheme.has(String(i.doi)));
+            return loose.length ? `<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#fffbeb;
+              border:1px solid #fde68a;color:#92400e;font-size:12.5px;">⚠ ${loose.length} artículo(s) marcados no están en
+              ningún tema (los marcaste después de agrupar, o la IA no los colocó). Pulsa «Rehacer temas» para incluirlos.</div>` : '';
+          })()}
         </section>
 
         <section style="border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;margin:12px 0;">
@@ -20865,9 +20895,11 @@
     async function run(year, step, extra = {}) {
       try { await api(`/vc/draft/${year}/run`, { method: 'POST', body: JSON.stringify({ step, ...extra }) }); }
       catch (e) { if (!/already_running/.test(e.message)) { alert('Error: ' + e.message); return; } }
+      _launchedAt = Date.now();
       renderGenerator(year);
     }
 
+    let _launchedAt = 0;
     function startGenPoll(year) {
       if (_genPoll) return;
       const tick = async () => {
@@ -20881,7 +20913,7 @@
           </div>` : (s.last_error ? `<div style="padding:8px 12px;border-radius:8px;background:#fef2f2;color:#b91c1c;
             font-size:12.5px;">Error: ${esc(s.last_error)}</div>` : '');
         $('pv-vc-stop')?.addEventListener('click', () => api('/vc/draft/stop', { method: 'POST' }));
-        if (!s.running) {
+        if (!s.running && Date.now() - _launchedAt >= 8000) {
           clearInterval(_genPoll); _genPoll = null;
           await loadList();
           if (_selected === year) renderGenerator(year);
