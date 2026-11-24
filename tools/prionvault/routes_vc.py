@@ -122,6 +122,11 @@ def api_vc_draft_run(year):
             kwargs["n_final"] = max(5, min(80, int(body.get("n") or g.N_FINAL)))
         except (TypeError, ValueError):
             kwargs["n_final"] = g.N_FINAL
+    elif step == "narrow":
+        try:
+            kwargs["n_final"] = max(5, min(80, int(body.get("n") or g.N_FINAL)))
+        except (TypeError, ValueError):
+            kwargs["n_final"] = g.N_FINAL
     elif step == "write":
         kwargs["instructions"] = str(body.get("instructions") or "")[:2000]
         kwargs["by_user"] = _viewer_id()

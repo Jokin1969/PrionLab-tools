@@ -20414,7 +20414,7 @@
       // keep polling for a few seconds instead of believing it.
       const justLaunched = Date.now() - _launchedAt < 8000;
       const busy = !!job.running || justLaunched;
-      const STEP_NAMES = { select: 'Selección', themes: 'Temas', write: 'Redacción', revise: 'Cambios' };
+      const STEP_NAMES = { select: 'Selección', narrow: 'Reducir selección', themes: 'Temas', write: 'Redacción', revise: 'Cambios' };
       const check = d.check;
       const dis = busy || !IS_VC_EDITOR ? 'disabled' : '';
 
@@ -20512,7 +20512,7 @@
             const loose = sel.filter(i => !inTheme.has(String(i.pmid)) && !inTheme.has(String(i.doi)));
             return loose.length ? `<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#fffbeb;
               border:1px solid #fde68a;color:#92400e;font-size:12.5px;">⚠ ${loose.length} artículo(s) marcados no están en
-              ningún tema (los marcaste después de agrupar, o la IA no los colocó). Pulsa «Rehacer temas» para incluirlos.</div>` : '';
+              ningún tema (los marcaste después de agrupar). Pulsa «Rehacer temas» para incluirlos.</div>` : '';
           })()}
         </section>
 
@@ -20707,6 +20707,18 @@
         const b = $(id); if (b && IS_VC_EDITOR && !_selBusy) b.disabled = !nSel;
       });
       if (!_items.length) { box.innerHTML = ''; return; }
+      const nWant = Number($('pv-vc-n')?.value) || 38;
+      const tooMany = nSel > Math.max(nWant, 45) ? `
+        <div style="margin-top:8px;padding:10px 12px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;
+                    font-size:12.5px;color:#92400e;">
+          <strong>⚠ Hay ${nSel} artículos marcados y en 3.500 caracteres caben unos 40.</strong>
+          Con tantos, la IA solo citará una parte (y elegirá ella cuáles). Redúcelos antes de agrupar en temas:
+          desmarca a mano con los filtros de abajo, o deja que la IA elija los mejores de entre los marcados.
+          ${IS_VC_EDITOR ? `<div style="margin-top:6px;"><button type="button" id="pv-vc-narrow" style="${btnCss(true)}" ${_selBusy ? 'disabled' : ''}
+            title="La IA elige un conjunto equilibrado entre los marcados, dando preferencia a los de vuestra colección. El resto se desmarca y queda en la lista como reserva.">
+            🤖 Reducir a ${nWant} con IA</button>
+            <span style="color:#6b7280;"> — el número es el de «Nº de artículos a citar», arriba. Los que sobren se desmarcan, no se borran.</span></div>` : ''}
+        </div>` : '';
       const chip = (on, color) => `padding:3px 10px;border-radius:999px;font-size:12px;cursor:pointer;white-space:nowrap;
         border:1px solid ${on ? color : '#d1d5db'};background:${on ? color : 'white'};color:${on ? 'white' : '#6b7280'};`;
       const vis = visibleItems();
@@ -20719,7 +20731,7 @@
       }).join('');
       const stateChips = [['all', 'Todos'], ['on', '☑ Marcados'], ['off', '☐ Sin marcar']].map(([k, l]) =>
         `<button type="button" data-vc-state="${k}" style="${chip(_f.state === k, '#0F3460')}">${l}</button>`).join('');
-      box.innerHTML = `
+      box.innerHTML = `${tooMany}
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px;">
           <span style="font-size:12px;color:#374151;font-weight:600;">Origen:</span>${originChips}
           <button type="button" data-vc-only-col style="all:unset;cursor:pointer;font-size:12px;color:#7c3aed;text-decoration:underline;">solo mi colección</button>
@@ -20744,6 +20756,11 @@
           ${vis.length ? vis.map(itemRow).join('')
             : '<p style="color:#9ca3af;font-size:12.5px;padding:10px 2px;">Ningún artículo con estos filtros.</p>'}
         </div>`;
+      $('pv-vc-narrow')?.addEventListener('click', async () => {
+        if (!await pvConfirm(`La IA elegirá ${nWant} de los ${nSel} artículos marcados y desmarcará el resto ` +
+                             `(siguen en la lista, como reserva). ¿Continuar?`)) return;
+        run(year, 'narrow', { n: nWant });
+      });
       box.querySelectorAll('[data-vc-origin]').forEach(b => b.addEventListener('click', () => {
         const k = b.dataset.vcOrigin;
         if (_f.origins.has(k)) _f.origins.delete(k); else _f.origins.add(k);

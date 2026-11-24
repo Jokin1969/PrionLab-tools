@@ -476,6 +476,54 @@ def _holistic_select(year: int, n: int) -> int:
     return len(picked)
 
 
+def step_narrow(year: int, n_final: int = N_FINAL) -> dict:
+    """Cut the marked papers down to the N that fit in the report: the AI
+    picks a balanced set among what is ticked NOW (lab proposals included)
+    and the rest are unticked — they stay in the list as reserve."""
+    items = _selected_items(year)
+    if len(items) <= n_final:
+        raise ValueError(f"Hay {len(items)} artículos marcados: no hace falta reducir a {n_final}.")
+    _set(phase=f"Eligiendo los {n_final} mejores de {len(items)} marcados", done=0, total=1)
+    key = lambda it: str(it["pmid"] or it["doi"])
+    user = "\n\n".join(
+        f"ID {key(it)} — score {round(it['score']) if it.get('score') is not None else 'n/a'}"
+        f"{' — PROPOSED BY THE LAB' if (it.get('reason') or '').startswith('📌') else ''}"
+        f" — {it['title']} ({it['journal']}, {it['quartile'] or 'n/a'})\n"
+        f"Why: {it.get('reason') or ''}\nSignals: {_signals_text(it) or 'none'}\n"
+        f"Evidence: {(it.get('evidence') or it.get('abstract') or '')[:500]}" for it in items)
+    parsed = _call(_HOLISTIC_SYSTEM,
+                   f"Choose exactly {n_final} papers. Use the ID given for each paper in the \"pmids\" list. "
+                   "Papers marked PROPOSED BY THE LAB were hand-picked by the authors: prefer them whenever "
+                   f"they are comparable to the alternatives.\n\nSHORTLIST:\n{user}",
+                   strong=True, max_tokens=6000, timeout=300)
+    valid = {key(it) for it in items}
+    picked = []
+    for p in parsed.get("pmids") or []:
+        p = re.sub(r"^\s*(id|pmid|doi)\s*:?\s*", "", str(p), flags=re.I).strip()
+        if p in valid and p not in picked:
+            picked.append(p)
+    picked = picked[:n_final]
+    if len(picked) < n_final * 0.7:
+        raise ValueError("La IA no devolvió una selección válida. Vuelve a intentarlo.")
+    why = parsed.get("why") or {}
+    keep = set(picked)
+    with _get_engine().begin() as conn:
+        for it in items:
+            if key(it) in keep:
+                w = str(why.get(key(it)) or "")[:400]
+                if w and not (it.get("reason") or "").startswith("📌"):
+                    conn.execute(sql_text("UPDATE prionvault_vc_item SET reason = :w WHERE id = :id"),
+                                 {"w": w, "id": it["id"]})
+            else:   # manual = TRUE: stays unticked on later runs / collection syncs
+                conn.execute(sql_text(
+                    "UPDATE prionvault_vc_item SET selected = FALSE, manual = TRUE WHERE id = :id"),
+                    {"id": it["id"]})
+    _set(done=1)
+    info = {"before": len(items), "kept": len(picked)}
+    _log(year, "narrow", info)
+    return info
+
+
 def _preselect(year: int, n: int) -> int:
     with _get_engine().begin() as conn:
         conn.execute(sql_text(
@@ -619,7 +667,7 @@ def step_themes(year: int, hints: Optional[str] = None) -> dict:
                    f"PREVIOUS REPORTS (most recent in full, older ones only their outlook):\n{memory}\n\n"
                    f"SELECTED PAPERS OF {year}:\n{papers}"
                    + (f"\n\nTHEMES SUGGESTED BY THE LAB (one per line):\n{hints}" if hints.strip() else ""),
-                   strong=True, max_tokens=4000)
+                   strong=True, max_tokens=8000, timeout=300)
     themes = [t for t in (parsed.get("themes") or []) if isinstance(t, dict)]
     valid = {str(it["pmid"] or it["doi"]) for it in items}
     for t in themes:
@@ -628,6 +676,29 @@ def step_themes(year: int, hints: Optional[str] = None) -> dict:
                for p in (t.get("pmids") or [])]
         t["pmids"] = [p for p in ids if p in valid]
     themes = [t for t in themes if t["pmids"]]
+    # Every marked paper must end up in a theme. With long lists the model
+    # leaves some out: ask once more only for those, then put any still
+    # unplaced in the theme with fewest papers rather than dropping them.
+    placed = {p for t in themes for p in t["pmids"]}
+    left = [it for it in items if str(it["pmid"] or it["doi"]) not in placed]
+    if themes and left:
+        _set(phase=f"Colocando {len(left)} artículos que quedaron sin tema")
+        try:
+            again = _call(
+                "Assign each paper to exactly one of the given themes (the best fit). Answer only JSON: "
+                '{"assign": {"<paper id>": "<theme name, copied exactly>"}}',
+                "THEMES:\n" + "\n".join(f"- {t.get('name')}: {t.get('summary', '')}" for t in themes) +
+                "\n\nPAPERS:\n" + "\n".join(
+                    f"- {it['pmid'] or it['doi']}: {it['title']} ({it['journal']})" for it in left),
+                strong=False, max_tokens=6000, timeout=180).get("assign") or {}
+        except Exception as exc:
+            logger.warning("vc themes: second pass failed: %s", exc)
+            again = {}
+        by_name = {(t.get("name") or "").strip().lower(): t for t in themes}
+        for it in left:
+            k = str(it["pmid"] or it["doi"])
+            t = by_name.get(str(again.get(k) or "").strip().lower()) or min(themes, key=lambda x: len(x["pmids"]))
+            t["pmids"].append(k)
     if not themes:
         # Keep whatever themes were there and say so, instead of silently
         # leaving the section empty.
@@ -1146,7 +1217,7 @@ def stop() -> dict:
     return get_status()
 
 
-_STEPS = {"select": step_select, "themes": step_themes, "write": step_write, "revise": step_revise}
+_STEPS = {"select": step_select, "narrow": step_narrow, "themes": step_themes, "write": step_write, "revise": step_revise}
 
 
 def _remember_error(year: int, step: str, error: str) -> None:
