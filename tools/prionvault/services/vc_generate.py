@@ -39,7 +39,12 @@ MAX_CHARS = 3500
 N_FINAL = 38
 N_SHORTLIST = 120
 _PROVIDERS = ["anthropic", "openai", "gemini"]
-_STRONG = {"anthropic": "claude-opus-5"}        # "mucha potencia de IA"
+# "Mucha potencia de IA". If Claude fails, the fallbacks must be strong
+# models too: with the cheap defaults (gpt-4o-mini…) a fallback silently
+# produced a much worse report.
+_STRONG = {"anthropic": "claude-opus-5", "openai": "gpt-4.1", "gemini": "gemini-2.5-pro"}
+_LABELS = {"anthropic": "Claude Opus", "openai": "GPT-4.1", "gemini": "Gemini 2.5 Pro"}
+_served: list = []      # which model answered each strong call of the running step
 
 _lock = threading.Lock()
 _state: dict = {"running": False, "step": None, "phase": None, "done": 0, "total": 0,
@@ -58,10 +63,21 @@ _GUIDELINES = f"""Report guidelines (ISO 56001 "Vigilancia competitiva", institu
 
 def _call(system: str, user: str, *, strong: bool, max_tokens: int, timeout: float = 240) -> dict:
     from .llm_pool import call_llm_json_with_fallback
-    parsed, _info = call_llm_json_with_fallback(
+    parsed, info = call_llm_json_with_fallback(
         providers=_PROVIDERS, system=system, user=user, max_tokens=max_tokens,
-        models=_STRONG if strong else None, timeout=timeout, max_attempts=1)
+        models=_STRONG if strong else None, timeout=timeout, max_attempts=2 if strong else 1)
+    if strong:
+        _served.append({"provider": info.get("provider"),
+                        "failed": [f"{a.get('provider')}: {str(a.get('error'))[:160]}"
+                                   for a in info.get("attempts") or []]})
     return parsed if isinstance(parsed, dict) else {}
+
+
+def _served_summary() -> dict:
+    used = [x["provider"] for x in _served if x.get("provider")]
+    failed = [f for x in _served for f in x.get("failed") or []]
+    return {"models": [_LABELS.get(p, p) for p in dict.fromkeys(used)],
+            "fallback": any(p != "anthropic" for p in used), "failed": failed[:4]}
 
 
 def _set(**kw) -> None:
@@ -791,7 +807,8 @@ def _min_cited(n_selected: int) -> int:
 
 
 def validate(intro: str, advances: str, outlook: str, allowed: set[str],
-             items: Optional[list] = None, coverage: bool = True) -> dict:
+             items: Optional[list] = None, coverage: bool = True,
+             keep_ids: Optional[set] = None) -> dict:
     """`coverage=False` (revisions): report which selected papers are not
     cited but do not demand them — the authors asked for specific changes
     only, not for a rewrite that squeezes more citations in."""
@@ -800,21 +817,31 @@ def validate(intro: str, advances: str, outlook: str, allowed: set[str],
     cited = _cited_ids(" ".join((intro, advances, outlook)))
     unknown = sorted({p for p in cited if p not in allowed})
     problems = []
+    sizes = f"paragraph 1 = {len(intro)}, paragraph 2 = {len(advances)}, paragraph 3 = {len(outlook)} characters"
     if total > MAX_CHARS:
-        problems.append(f"The body has {total} characters; the maximum is {MAX_CHARS}. Shorten it by at least "
-                        f"{total - MAX_CHARS + 40} characters.")
+        problems.append(f"The body has {total} characters ({sizes}); the maximum is {MAX_CHARS}. Shorten it by "
+                        f"at least {total - MAX_CHARS + 40} characters. Cut from paragraphs 1 and 3 and delete "
+                        "filler sentences (generic praise, 'Overall, these findings…', restatements); do NOT "
+                        "remove citations or cited findings to save space.")
     if total < MAX_CHARS - 600:
         problems.append(f"The body has only {total} characters; use the available space (aim 3,300–3,480).")
-    if not 0.15 <= shares[0] <= 0.33:
+    # A revision the authors asked for (e.g. "shorten the intro") may leave
+    # the advances paragraph larger than the nominal half.
+    lo, hi2 = (0.15, 0.62) if coverage else (0.10, 0.75)
+    if not lo <= shares[0] <= 0.33:
         problems.append(f"Paragraph 1 is {shares[0]:.0%} of the text; it must be about 25%.")
-    if not 0.40 <= shares[1] <= 0.62:
+    if not 0.40 <= shares[1] <= hi2:
         problems.append(f"Paragraph 2 is {shares[1]:.0%} of the text; it must be about 50%.")
-    if not 0.15 <= shares[2] <= 0.33:
+    if not lo <= shares[2] <= 0.33:
         problems.append(f"Paragraph 3 is {shares[2]:.0%} of the text; it must be about 25%.")
     if unknown:
         problems.append("These identifiers are not among the selected papers and must be removed: "
                         + ", ".join(unknown))
     cset = set(cited)
+    lost = sorted(k for k in (keep_ids or set()) if k not in cset)
+    if lost:
+        problems.append("These citations were in the draft and the authors did NOT ask to remove them; put each "
+                        "one back, with the finding it supported: " + ", ".join(lost))
     missing = [it for it in (items or [])
                if str(it.get("pmid") or "") not in cset and (it.get("doi") or "").lower() not in cset]
     need = _min_cited(len(items)) if items else 10
@@ -890,10 +917,11 @@ def _has_text(draft) -> bool:
 
 
 def _comply(draft: dict, user: str, system: str, allowed: set[str], *, max_rounds: int = 3,
-            keep: str = "", items: Optional[list] = None, coverage: bool = True) -> tuple[dict, dict, int]:
+            keep: str = "", items: Optional[list] = None, coverage: bool = True,
+            keep_ids: Optional[set] = None) -> tuple[dict, dict, int]:
     """Re-ask until the draft passes validation (or rounds run out)."""
     check = validate(draft.get("intro", ""), draft.get("advances", ""), draft.get("outlook", ""), allowed,
-                     items, coverage)
+                     items, coverage, keep_ids)
     rounds = 0
     while not check["ok"] and rounds < max_rounds and not _stopped():
         rounds += 1
@@ -908,12 +936,13 @@ def _comply(draft: dict, user: str, system: str, allowed: set[str], *, max_round
             break
         draft = new
         check = validate(draft.get("intro", ""), draft.get("advances", ""), draft.get("outlook", ""), allowed,
-                         items, coverage)
+                         items, coverage, keep_ids)
     return draft, check, rounds
 
 
 def _factcheck_and_fix(draft: dict, check: dict, user: str, system: str, items: list[dict],
-                       allowed: set[str], keep: str = "", coverage: bool = True) -> tuple[dict, dict, list, list]:
+                       allowed: set[str], keep: str = "", coverage: bool = True,
+                       keep_ids: Optional[set] = None) -> tuple[dict, dict, list, list]:
     issues, fixed = [], []
     if _stopped():
         return draft, check, fixed, issues
@@ -936,7 +965,7 @@ def _factcheck_and_fix(draft: dict, check: dict, user: str, system: str, items: 
                             ("\n\nAlso fix: " + "; ".join(check["problems"]) if check["problems"] else ""),
                             strong=True, max_tokens=4000)
             rcheck = validate(revised.get("intro", ""), revised.get("advances", ""),
-                              revised.get("outlook", ""), allowed, items, coverage)
+                              revised.get("outlook", ""), allowed, items, coverage, keep_ids)
             if _has_text(revised) and (rcheck["ok"] or not check["ok"]):
                 draft, check = revised, rcheck
                 break
@@ -1028,7 +1057,12 @@ they say, remove what they say, cite or stop citing the papers they mention, cha
 everything else as it is — same wording wherever no change was requested. Only if the requested changes push the \
 text over the length limit, tighten other sentences slightly. In this revision the rule about citing all the \
 selected papers does NOT apply: keep exactly the citations the draft already has, plus or minus the ones the \
-authors ask for (if they ask to cite the missing papers, or more papers, then do add them). Also return "changes": a short list, in Spanish, \
+authors ask for (if they ask to cite the missing papers, or more papers, then do add them).
+SHORTENING: when they ask to shorten, cut where they say (e.g. "mostly from the introduction and the outlook" \
+means those two paragraphs lose most of the characters and paragraph 2 keeps its content). First delete filler: \
+generic praise ("groundbreaking", "This pivotal finding underscores…"), summary sentences ("Overall, these \
+findings collectively…"), restatements and long definitions. NEVER drop a citation, or the finding it supports, \
+to save space — compress its sentence instead. The length limit is strict: count characters. Also return "changes": a short list, in Spanish, \
 of what you changed. JSON: {"title": "...", "intro": "...", "advances": "...", "outlook": "...", \
 "changes": ["..."]}"""
 
@@ -1106,8 +1140,16 @@ def step_revise(year: int, request: str, by_user=None) -> dict:
         paper_note += "\nPapers ADDED to the selection (cite them where the request says): " + ", ".join(added)
     if removed:
         paper_note += "\nPapers REMOVED from the selection (must no longer be cited): " + ", ".join(map(str, removed))
+    # Citations of the current draft that must survive: all of them except
+    # the papers the authors asked to remove.
+    gone = {str(x).lower() for x in removed}
+    keep_ids = {c for c in _cited_ids(" ".join((draft["intro"], draft["advances"], draft["outlook"])))
+                if c in allowed and c not in gone}
+    n1, n2, n3 = len(draft["intro"]), len(draft["advances"]), len(draft["outlook"])
     user = (_context(year, items, style) +
             "\n\nCURRENT DRAFT:\n" + json.dumps(draft, ensure_ascii=False) +
+            f"\n\nCURRENT SIZE: paragraph 1 = {n1}, paragraph 2 = {n2}, paragraph 3 = {n3} characters; "
+            f"total {n1 + n2 + n3 + 2} (maximum {MAX_CHARS})."
             f"\n\nTHE AUTHORS ASK:\n{request}{paper_note}")
     _set(phase="Aplicando los cambios")
     revised = _call(system, user, strong=True, max_tokens=4500)
@@ -1117,10 +1159,10 @@ def step_revise(year: int, request: str, by_user=None) -> dict:
     if not (revised.get("title") or "").strip():
         revised["title"] = draft["title"]
     changes = [str(c) for c in revised.get("changes") or []][:20]
-    revised, check, rounds = _comply(revised, user, system, allowed, max_rounds=2, keep=request[:600],
-                                     items=items, coverage=False)
+    revised, check, rounds = _comply(revised, user, system, allowed, max_rounds=3, keep=request[:600],
+                                     items=items, coverage=False, keep_ids=keep_ids)
     revised, check, fixed, issues = _factcheck_and_fix(revised, check, user, system, items, allowed,
-                                                       keep=request[:600], coverage=False)
+                                                       keep=request[:600], coverage=False, keep_ids=keep_ids)
     summary = "; ".join(changes) or "Cambios aplicados."
     if added:
         summary += f" · Artículos añadidos: {', '.join(added)}"
@@ -1285,9 +1327,14 @@ def start(step: str, year: int, **kwargs) -> Optional[dict]:
 
     def run():
         try:
+            del _served[:]
             res = _STEPS[step](year, **kwargs)
             _set(result=res)
             _remember_error(year, step, "")
+            try:
+                _log(year, "served", {**_served_summary(), "step": step})
+            except Exception:
+                logger.debug("vc: could not store served info", exc_info=True)
         except Exception as exc:
             logger.exception("vc generate %s failed", step)
             _set(last_error=str(exc)[:400])

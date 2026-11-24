@@ -144,7 +144,16 @@ def call_llm_json(*, provider: str, system: str, user: str,
             text = text[4:]
         text = text.rstrip("` \n")
     try:
-        parsed = json.loads(text)
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            # The strongest models sometimes wrap the object in a sentence
+            # ("Here is the JSON: {...}"). Take the outermost object rather
+            # than discarding a good answer and falling back to a weaker one.
+            i, j = text.find("{"), text.rfind("}")
+            if i < 0 or j <= i:
+                raise
+            parsed = json.loads(text[i:j + 1])
         if not isinstance(parsed, dict):
             # Every caller expects an object; treat anything else as a bad
             # answer so the fallback chain moves on to the next provider.

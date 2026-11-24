@@ -20463,6 +20463,17 @@
             ⚠ El último paso (${esc(STEP_NAMES[d.last_error_step] || d.last_error_step || 'proceso')}) no terminó:
             ${esc(d.last_error)}</div>` : ''}</div>
 
+        ${(() => {
+          const sv = (d.pipeline || {}).served;
+          if (!sv || !(sv.models || []).length) return '';
+          return `<div style="font-size:12px;margin:4px 0;color:${sv.fallback ? '#b45309' : '#6b7280'};"
+              title="${esc((sv.failed || []).join(' | '))}">
+            ${sv.fallback ? '⚠' : '🤖'} Último paso (${esc(STEP_NAMES[sv.step] || sv.step || '')}) hecho con
+            <strong>${esc(sv.models.join(' + '))}</strong>${sv.fallback
+              ? ` — Claude falló y respondió un modelo de relevo; el resultado puede ser peor. Motivo: ${esc((sv.failed || [])[0] || 'desconocido')}`
+              : ''}</div>`;
+        })()}
+
         <section style="border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;margin:12px 0;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
             <div><strong>1 · Selección</strong>
