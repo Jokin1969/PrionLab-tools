@@ -677,8 +677,10 @@ def _write_system(style: str) -> str:
 Style: match the previous reports provided (scientific but accessible English, flowing paragraphs that link the \
 papers coherently — each cited paper is woven into the narrative with what it showed and why it matters, grouped \
 by theme; no bullet points, no headings inside paragraphs). Cite ONLY the identifiers you are given, each in \
-brackets right after the statement it supports. Prefer citing most of the selected papers; group several \
-identifiers in one bracket when they support the same point.
+brackets right after the statement it supports. The authors chose the selected papers one by one and expect \
+ALL of them cited (when there are more than 40, at least 35, the highest-scored first). That fits only if you \
+write densely, as the previous reports do: one clause per finding or per group of related papers, 2–5 \
+identifiers in one bracket when they support the same point, no filler. A paper left out is a failure.
 Answer only JSON: {{"title": "...", "intro": "<paragraph 1>", "advances": "<paragraph 2>", "outlook": "<paragraph 3>"}}"""
 
 
@@ -708,7 +710,17 @@ def _allowed(items: list[dict]) -> set[str]:
             | {it["doi"].lower() for it in items if it.get("doi")})
 
 
-def validate(intro: str, advances: str, outlook: str, allowed: set[str]) -> dict:
+MAX_EXPECTED_CITED = 40   # what fits in 3,500 characters (the 2024–2025 reports cited ~38)
+
+
+def _min_cited(n_selected: int) -> int:
+    """How many of the selected papers the text must cite: nearly all of
+    them, up to what fits in the length limit."""
+    return max(10, int(min(n_selected, MAX_EXPECTED_CITED) * 0.85))
+
+
+def validate(intro: str, advances: str, outlook: str, allowed: set[str],
+             items: Optional[list] = None) -> dict:
     total = len(intro) + len(advances) + len(outlook) + 2   # paragraph separators
     shares = [len(p) / max(1, total) for p in (intro, advances, outlook)]
     cited = _cited_ids(" ".join((intro, advances, outlook)))
@@ -728,9 +740,22 @@ def validate(intro: str, advances: str, outlook: str, allowed: set[str]) -> dict
     if unknown:
         problems.append("These identifiers are not among the selected papers and must be removed: "
                         + ", ".join(unknown))
-    if len(set(cited)) < 10:
-        problems.append("Cite more of the provided papers (at least 10 distinct papers).")
-    return {"chars": total, "shares": [round(x, 3) for x in shares], "cited": len(set(cited)),
+    cset = set(cited)
+    missing = [it for it in (items or [])
+               if str(it.get("pmid") or "") not in cset and (it.get("doi") or "").lower() not in cset]
+    need = _min_cited(len(items)) if items else 10
+    n_cited = (len(items) - len(missing)) if items else len(cset)
+    if n_cited < need:
+        msg = (f"Only {n_cited} of the {len(items) if items else 'provided'} selected papers are cited; "
+               f"cite at least {need}.")
+        if missing:
+            msg += (" Add these, each next to the statement it supports, grouping 2–5 identifiers in one "
+                    "bracket per point and tightening the wording to stay within the length limit: "
+                    + "; ".join(f"{_ident(it, 'pmid')} ({(it.get('title') or '')[:70]})" for it in missing[:30]))
+        problems.append(msg)
+    return {"chars": total, "shares": [round(x, 3) for x in shares], "cited": len(cset),
+            "selected": len(items) if items else None, "min_cited": need,
+            "uncited": [str(it.get("pmid") or it.get("doi")) for it in missing],
             "unknown_pmids": unknown, "problems": problems, "ok": not problems}
 
 
@@ -786,9 +811,9 @@ def _paper_lines(items: list[dict], themes: list[dict], style: str) -> list[str]
 
 
 def _comply(draft: dict, user: str, system: str, allowed: set[str], *, max_rounds: int = 3,
-            keep: str = "") -> tuple[dict, dict, int]:
+            keep: str = "", items: Optional[list] = None) -> tuple[dict, dict, int]:
     """Re-ask until the draft passes validation (or rounds run out)."""
-    check = validate(draft.get("intro", ""), draft.get("advances", ""), draft.get("outlook", ""), allowed)
+    check = validate(draft.get("intro", ""), draft.get("advances", ""), draft.get("outlook", ""), allowed, items)
     rounds = 0
     while not check["ok"] and rounds < max_rounds and not _stopped():
         rounds += 1
@@ -799,7 +824,7 @@ def _comply(draft: dict, user: str, system: str, allowed: set[str], *, max_round
                       (f" — and keeping these requested changes: {keep}" if keep else "") + ":\n- " +
                       "\n- ".join(check["problems"]),
                       strong=True, max_tokens=4000)
-        check = validate(draft.get("intro", ""), draft.get("advances", ""), draft.get("outlook", ""), allowed)
+        check = validate(draft.get("intro", ""), draft.get("advances", ""), draft.get("outlook", ""), allowed, items)
     return draft, check, rounds
 
 
@@ -827,7 +852,7 @@ def _factcheck_and_fix(draft: dict, check: dict, user: str, system: str, items: 
                             ("\n\nAlso fix: " + "; ".join(check["problems"]) if check["problems"] else ""),
                             strong=True, max_tokens=4000)
             rcheck = validate(revised.get("intro", ""), revised.get("advances", ""),
-                              revised.get("outlook", ""), allowed)
+                              revised.get("outlook", ""), allowed, items)
             if rcheck["ok"] or not check["ok"]:
                 draft, check = revised, rcheck
                 break
@@ -886,11 +911,12 @@ def step_write(year: int, instructions: str = "", by_user=None) -> dict:
     system = _write_system(style)
     allowed = _allowed(items)
     user = (_context(year, items, style) +
-            f"\n\nWrite the {year} report (paragraph 3 looks ahead to {year + 1})."
+            f"\n\nWrite the {year} report (paragraph 3 looks ahead to {year + 1}). There are {len(items)} "
+            f"selected papers: cite at least {_min_cited(len(items))} of them, ideally all."
             + (f"\n\nAdditional instructions from the authors: {instructions}" if instructions else ""))
     _set(phase="Redactando", done=0, total=0)
     draft = _call(system, user, strong=True, max_tokens=4000)
-    draft, check, rounds = _comply(draft, user, system, allowed)
+    draft, check, rounds = _comply(draft, user, system, allowed, items=items)
     draft, check, fixed, issues = _factcheck_and_fix(draft, check, user, system, items, allowed)
     info = {**check, "attempts": rounds + 1, "instructions": instructions[:500],
             "factcheck_fixed": fixed, "factcheck_remaining": issues}
@@ -998,7 +1024,7 @@ def step_revise(year: int, request: str, by_user=None) -> dict:
     _set(phase="Aplicando los cambios")
     revised = _call(system, user, strong=True, max_tokens=4500)
     changes = [str(c) for c in revised.get("changes") or []][:20]
-    revised, check, rounds = _comply(revised, user, system, allowed, max_rounds=2, keep=request[:600])
+    revised, check, rounds = _comply(revised, user, system, allowed, max_rounds=2, keep=request[:600], items=items)
     revised, check, fixed, issues = _factcheck_and_fix(revised, check, user, system, items, allowed,
                                                        keep=request[:600])
     summary = "; ".join(changes) or "Cambios aplicados."
@@ -1208,7 +1234,8 @@ def get_draft(year: int) -> dict:
     allowed = _allowed([i for i in items if i["selected"]])
     rep["paragraphs"] = paras
     rep["versions"] = list_versions(year)
-    rep["check"] = validate(*(paras + ["", "", ""])[:3], allowed) if paras else None
+    rep["check"] = (validate(*(paras + ["", "", ""])[:3], allowed, [i for i in items if i["selected"]])
+                    if paras else None)
     in_coll = _collection_article_ids(year)
     for i in items:
         i["article_id"] = str(i["article_id"]) if i["article_id"] else None

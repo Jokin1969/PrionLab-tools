@@ -832,6 +832,15 @@
             <a href="${esc(c.url)}" target="_blank" rel="noopener" data-vc-cite="${esc(c.id)}"
                style="color:${c.inVault ? '#2563eb' : '#d97706'};">${c.inVault ? '📚' : '🌐'} ${c.isDoi ? 'doi' : 'PMID'} ${esc(c.id)}</a>
             — ${esc(c.it ? c.it.title : 'no está entre los candidatos')}</li>`).join('')}</ol></details>` : '';
+        const isCited = i => seen.has(String(i.pmid || '')) || [...seen.keys()].some(k => k.toLowerCase() === (i.doi || '').toLowerCase() && k);
+        const marked = _items.filter(i => i.selected), loose = marked.filter(i => !isCited(i));
+        if (marked.length) list.innerHTML += `<details style="font-size:12px;margin-top:4px;" ${loose.length ? 'open' : ''}>
+          <summary style="cursor:pointer;color:${loose.length ? '#b45309' : '#15803d'};">
+            ${loose.length ? '⚠' : '✓'} El texto cita ${marked.length - loose.length} de los ${marked.length} artículos marcados${loose.length ? ` · ${loose.length} sin citar` : ''}</summary>
+          ${loose.length ? `<div style="color:#6b7280;margin-top:2px;">Para incluirlos, pulsa «Volver a redactar» o pídeselo a la IA en el paso 4
+            («cita también los artículos que faltan»). Si prefieres dejarlos fuera, desmárcalos en la selección.</div>
+          <ol style="margin:4px 0 0;padding-left:20px;">${loose.map(i => `<li>${i.pmid ? 'PMID ' + esc(i.pmid) : 'doi ' + esc(i.doi || '')} — ${esc(i.title || '')}</li>`).join('')}</ol>` : ''}
+        </details>`;
       }
       let tip = $('pv-vc-tip');
       if (!tip) {
