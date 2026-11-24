@@ -351,7 +351,8 @@
         <div id="pv-vc-genjob" style="position:sticky;top:0;z-index:5;">${busy ? workingHtml(job.phase, job) : ''}${!busy && d.last_error ? `
           <div style="padding:8px 12px;border-radius:8px;background:#fef2f2;color:#b91c1c;font-size:12.5px;">
             ⚠ El último paso (${esc(STEP_NAMES[d.last_error_step] || d.last_error_step || 'proceso')}) no terminó:
-            ${esc(d.last_error)}</div>` : ''}</div>
+            ${esc(d.last_error)}${IS_VC_EDITOR ? `<button type="button" data-vc-dismiss="error" title="Quitar este aviso"
+              style="all:unset;cursor:pointer;margin-left:8px;padding:0 6px;border-radius:6px;font-weight:700;opacity:.7;">✕</button>` : ''}</div>` : ''}</div>
 
         ${(() => {
           const sv = (d.pipeline || {}).served;
@@ -361,7 +362,8 @@
             ${sv.fallback ? '⚠' : '🤖'} Último paso (${esc(STEP_NAMES[sv.step] || sv.step || '')}) hecho con
             <strong>${esc(sv.models.join(' + '))}</strong>${sv.fallback
               ? ` — Claude falló y respondió un modelo de relevo; el resultado puede ser peor. Motivo: ${esc((sv.failed || [])[0] || 'desconocido')}`
-              : ''}</div>`;
+              : ''}${IS_VC_EDITOR ? `<button type="button" data-vc-dismiss="served" title="Quitar este aviso"
+              style="all:unset;cursor:pointer;margin-left:8px;padding:0 6px;border-radius:6px;font-weight:700;opacity:.7;">✕</button>` : ''}</div>`;
         })()}
 
         <section style="border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;margin:12px 0;">
@@ -465,6 +467,11 @@
         ${d.paragraphs.length ? reviseSection(d, dis) : ''}`;
 
       $('pv-vc-setup')?.addEventListener('click', startResolve);
+      body.querySelectorAll('[data-vc-dismiss]').forEach(b => b.addEventListener('click', async ev => {
+        ev.preventDefault(); ev.stopPropagation();
+        try { await api(`/vc/draft/${year}/dismiss`, { method: 'POST', body: JSON.stringify({ what: b.dataset.vcDismiss }) }); renderGenerator(year); }
+        catch (e) { alert('Error: ' + e.message); }
+      }));
       $('pv-vc-howto')?.addEventListener('click', () => openHowto(year));
       $('pv-vc-run-select')?.addEventListener('click', () => run(year, 'select', { n: Number($('pv-vc-n').value) || 38 }));
       $('pv-vc-run-themes')?.addEventListener('click', () => run(year, 'themes', { hints: $('pv-vc-hints')?.value || '' }));
@@ -865,7 +872,8 @@
           <summary style="cursor:pointer;color:${left.length ? '#b45309' : '#15803d'};">
             Revisión de hechos: ${fixed.length} detectadas y reescritas por la IA${left.length ? ` · ${left.length} siguen pendientes` : ''}</summary>
           <div style="margin-top:4px;color:#6b7280;">La IA comprueba cada frase citada contra su artículo. Lo que no cuadra lo
-            reescribe y vuelve a comprobar.</div>
+            reescribe y vuelve a comprobar.${IS_VC_EDITOR ? `<button type="button" data-vc-dismiss="factcheck" title="Quitar este aviso"
+              style="all:unset;cursor:pointer;margin-left:8px;padding:0 6px;border-radius:6px;font-weight:700;opacity:.7;">✕ quitar esta revisión</button>` : ''}</div>
           ${left.length ? `<div style="margin-top:6px;color:#b45309;"><strong>⚠ Por revisar a mano</strong> — siguen sin cuadrar
             en el texto actual, después de la corrección automática. Tienes que mirarlas tú:</div><ul style="margin:2px 0 0 18px;">${left.map(li).join('')}</ul>` : ''}
           ${fixed.length ? `<div style="margin-top:6px;color:#6b7280;"><strong>✓ Detectadas y corregidas</strong> — fallos del primer

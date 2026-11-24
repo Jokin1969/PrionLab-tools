@@ -63,6 +63,11 @@ _GUIDELINES = f"""Report guidelines (ISO 56001 "Vigilancia competitiva", institu
 
 def _call(system: str, user: str, *, strong: bool, max_tokens: int, timeout: float = 240) -> dict:
     from .llm_pool import call_llm_json_with_fallback
+    if strong:
+        # The strongest models spend part of the budget reasoning before
+        # they write: with the old 4,000 the JSON came back cut in half
+        # ("Unterminated string") and a weaker model took over.
+        max_tokens = max(max_tokens * 4, 16000)
     parsed, info = call_llm_json_with_fallback(
         providers=_PROVIDERS, system=system, user=user, max_tokens=max_tokens,
         models=_STRONG if strong else None, timeout=timeout, max_attempts=2 if strong else 1)
@@ -1293,6 +1298,25 @@ def _remember_error(year: int, step: str, error: str) -> None:
         _log(year, "last_error", {"error": error, "step": step})
     except Exception:
         logger.debug("vc: could not store last_error", exc_info=True)
+
+
+def dismiss(year: int, what: str) -> None:
+    """Clear a notice of the generator once the user has read it."""
+    with _get_engine().begin() as conn:
+        if what == "served":
+            conn.execute(sql_text(
+                "UPDATE prionvault_vc_report SET pipeline = pipeline - 'served' WHERE year = :y"), {"y": year})
+        elif what == "error":
+            conn.execute(sql_text(
+                "UPDATE prionvault_vc_report SET pipeline = pipeline - 'last_error' WHERE year = :y"), {"y": year})
+        elif what == "factcheck":
+            conn.execute(sql_text("""
+                UPDATE prionvault_vc_report
+                   SET pipeline = jsonb_set(pipeline, '{write}',
+                         (pipeline -> 'write') - 'factcheck_fixed' - 'factcheck_remaining')
+                 WHERE year = :y AND pipeline ? 'write'"""), {"y": year})
+        else:
+            raise ValueError(what)
 
 
 def last_error_step(year: int) -> str:

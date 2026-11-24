@@ -217,6 +217,18 @@ def api_vc_items_bulk(year):
     return jsonify({"ok": True, "changed": g.set_selected_many(year, ids, bool(data.get("selected")))})
 
 
+@prionvault_bp.route("/api/vc/draft/<int:year>/dismiss", methods=["POST"])
+@vc_editor_required
+def api_vc_dismiss(year):
+    """Clear a notice: {"what": "served"|"error"|"factcheck"}."""
+    from .services import vc_generate as g
+    try:
+        g.dismiss(year, str((request.get_json(silent=True) or {}).get("what") or ""))
+    except ValueError:
+        return jsonify({"error": "bad_what"}), 400
+    return jsonify({"ok": True})
+
+
 @prionvault_bp.route("/api/vc/draft/<int:year>/propose", methods=["POST"])
 @vc_editor_required
 def api_vc_propose(year):

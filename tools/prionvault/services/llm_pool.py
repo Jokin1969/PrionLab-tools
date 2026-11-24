@@ -223,7 +223,7 @@ def _call_anthropic(api_key: str, system: str, user: str,
     # when a caller overrides the model, and keep the old behaviour for
     # the default cheap model.
     extra = {"temperature": temperature} if model == _MODELS["anthropic"] else {}
-    message = client.messages.create(
+    kwargs = dict(
         model=model, max_tokens=max_tokens, **extra,
         system=[
             {
@@ -234,6 +234,13 @@ def _call_anthropic(api_key: str, system: str, user: str,
         ],
         messages=[{"role": "user", "content": user}],
     )
+    if max_tokens > 8000:
+        # Long outputs must be streamed (the SDK refuses large non-streamed
+        # requests, and a slow one would hit the read timeout).
+        with client.messages.stream(**kwargs) as stream:
+            message = stream.get_final_message()
+    else:
+        message = client.messages.create(**kwargs)
     elapsed_ms = int((time.monotonic() - start) * 1000)
     text = "".join(
         b.text for b in message.content if getattr(b, "type", None) == "text"
