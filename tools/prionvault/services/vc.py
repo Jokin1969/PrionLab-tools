@@ -137,6 +137,23 @@ def _create_article(meta, by_user=None) -> str:
     """Insert a PubMed/CrossRef record as a (PDF-less) article. The usual
     batch tools (OA PDF fetch, abstracts, summaries) can complete it later."""
     eng = _get_engine()
+    # The paper may already be in the library under its DOI but without a
+    # PMID (or the other way round): the caller only looked it up by the
+    # identifier it had. Reuse that article and complete its identifiers
+    # instead of hitting the unique constraint.
+    existing = _find_article(meta.doi, meta.pubmed_id)
+    if existing:
+        with eng.begin() as conn:
+            conn.execute(sql_text("""
+                UPDATE articles a
+                   SET pubmed_id = coalesce(nullif(a.pubmed_id, ''), :pmid),
+                       doi = CASE WHEN coalesce(a.doi, '') = '' AND :doi <> ''
+                                   AND NOT EXISTS (SELECT 1 FROM articles b WHERE lower(b.doi) = :doi)
+                                  THEN :doi ELSE a.doi END,
+                       updated_at = NOW()
+                 WHERE a.id = CAST(:id AS uuid)"""),
+                {"id": existing, "pmid": meta.pubmed_id, "doi": (meta.doi or "").lower()})
+        return existing
     new_id = str(_uuid.uuid4())
     with eng.begin() as conn:
         conn.execute(sql_text("""
@@ -313,8 +330,10 @@ def pick_pmid(ref_id: int, pmid: str, by_user=None, note: str = "Elegido manualm
         meta = _fetch_meta(None, pmid)
         if not meta or not meta.title:
             raise LookupError(f"PMID {pmid} no encontrado en PubMed")
+        # Already in the library under its DOI (no PMID yet)? Then it is a
+        # link, not an import; _create_article completes its identifiers.
+        status = "linked" if _find_article(meta.doi, meta.pubmed_id) else "created"
         aid = _create_article(meta, by_user)
-        status = "created"
     link_ref(ref_id, aid, status, note=note)
     return status
 
