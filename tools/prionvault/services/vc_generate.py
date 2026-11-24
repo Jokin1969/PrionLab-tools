@@ -85,9 +85,30 @@ def _served_summary() -> dict:
             "fallback": any(p != "anthropic" for p in used), "failed": failed[:4]}
 
 
+_last_pub = [0.0]
+
+
 def _set(**kw) -> None:
     with _lock:
         _state.update(kw)
+        snap = {k: _state.get(k) for k in ("step", "phase", "done", "total", "started_at")}
+        running = _state.get("running")
+    # Publish for the other worker: at once on a new phase, else every 3 s.
+    import time as _time
+    if running and ("phase" in kw or _time.monotonic() - _last_pub[0] > 3):
+        _last_pub[0] = _time.monotonic()
+        _job_lock.save_progress("vc_generate", snap)
+
+
+def _too_long(minutes: float = 12) -> bool:
+    """True when the running job has already taken this long: the optional
+    polishing rounds are then skipped so a step always ends."""
+    with _lock:
+        started = _state.get("started_at")
+    try:
+        return (datetime.utcnow() - datetime.fromisoformat(started)).total_seconds() > minutes * 60
+    except Exception:
+        return False
 
 
 def _stopped() -> bool:
@@ -975,9 +996,10 @@ def _comply(draft: dict, user: str, system: str, allowed: set[str], *, max_round
     check = validate(draft.get("intro", ""), draft.get("advances", ""), draft.get("outlook", ""), allowed,
                      items, coverage, keep_ids)
     rounds = 0
-    while not check["ok"] and rounds < max_rounds and not _stopped():
+    while not check["ok"] and rounds < max_rounds and not _stopped() and not _too_long():
         rounds += 1
-        _set(phase=f"Ajustando formato ({'; '.join(check['problems'])[:110]})")
+        _set(phase=f"Ajustando el texto, ronda {rounds} de {max_rounds} "
+                   f"({len(check['problems'])} cosas por corregir)", done=0, total=0)
         new = _call(system,
                       user + "\n\nYOUR PREVIOUS DRAFT:\n" + json.dumps(draft, ensure_ascii=False) +
                       "\n\nRevise it to fix ALL of these problems, keeping its content and style" +
@@ -996,14 +1018,14 @@ def _factcheck_and_fix(draft: dict, check: dict, user: str, system: str, items: 
                        allowed: set[str], keep: str = "", coverage: bool = True,
                        keep_ids: Optional[set] = None) -> tuple[dict, dict, list, list]:
     issues, fixed = [], []
-    if _stopped():
+    if _stopped() or _too_long(15):
         return draft, check, fixed, issues
-    _set(phase="Revisión de hechos (cada afirmación contra su artículo)")
+    _set(phase="Revisión de hechos (cada afirmación contra su artículo)", done=0, total=0)
     try:
         issues = _factcheck(draft, items)
     except Exception as exc:
         logger.warning("vc factcheck failed: %s", exc)
-    if issues and not _stopped():
+    if issues and not _stopped() and not _too_long(18):
         fixed = issues
         _set(phase=f"Corrigiendo {len(issues)} afirmaciones")
         fix_text = "\n".join(f"- {i.get('pmid')}: \"{i.get('quote')}\" — {i.get('problem')} → {i.get('fix')}"
@@ -1021,10 +1043,12 @@ def _factcheck_and_fix(draft: dict, check: dict, user: str, system: str, items: 
             if _has_text(revised) and (rcheck["ok"] or not check["ok"]):
                 draft, check = revised, rcheck
                 break
-        try:
-            issues = _factcheck(draft, items)
-        except Exception:
-            pass
+        if not _too_long(20):
+            _set(phase="Comprobando las correcciones")
+            try:
+                issues = _factcheck(draft, items)
+            except Exception:
+                pass
     return draft, check, fixed, issues
 
 
@@ -1083,7 +1107,7 @@ def step_write(year: int, instructions: str = "", by_user=None, n_target: Option
                " — they cannot all fit: turn each '### Point' into one clause citing the 1–4 strongest papers "
                "of that point in one bracket, covering every theme and as many points as the length allows.")
             + (f"\n\nAdditional instructions from the authors: {instructions}" if instructions else ""))
-    _set(phase="Redactando", done=0, total=0)
+    _set(phase=f"Redactando el informe con {len(items)} artículos (unos minutos)", done=0, total=0)
     draft = _call(system, user, strong=True, max_tokens=4000)
     if not _has_text(draft):
         raise ValueError("La IA no devolvió el texto del informe. Vuelve a pulsar «Redactar».")
@@ -1207,7 +1231,7 @@ def step_revise(year: int, request: str, by_user=None) -> dict:
             f"\n\nCURRENT SIZE: paragraph 1 = {n1}, paragraph 2 = {n2}, paragraph 3 = {n3} characters; "
             f"total {n1 + n2 + n3 + 2} (maximum {MAX_CHARS})."
             f"\n\nTHE AUTHORS ASK:\n{request}{paper_note}")
-    _set(phase="Aplicando los cambios")
+    _set(phase="Aplicando los cambios (unos minutos)", done=0, total=0)
     revised = _call(system, user, strong=True, max_tokens=4500)
     if not _has_text(revised):
         # Nothing is saved: the draft stays exactly as it was.
@@ -1326,7 +1350,10 @@ def get_status() -> dict:
         snap = dict(_state)
     if not snap.get("running") and _job_lock.running_elsewhere("vc_generate"):
         snap["running"] = True
-        snap["phase"] = "En marcha en otro proceso del servidor."
+        prog = _job_lock.load_progress("vc_generate")
+        snap.update({"phase": prog.get("phase") or "Trabajando", "step": prog.get("step"),
+                     "done": prog.get("done") or 0, "total": prog.get("total") or 0,
+                     "started_at": prog.get("started_at")})
     return snap
 
 

@@ -39,6 +39,41 @@ def running_elsewhere(name: str) -> bool:
         return False
 
 
+_PROGRESS_DDL = ("CREATE TABLE IF NOT EXISTS pv_batch_progress ("
+                 "name TEXT PRIMARY KEY, info TEXT NOT NULL DEFAULT '{}', "
+                 "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())")
+
+
+def save_progress(name: str, info: dict) -> None:
+    """Publish the running job's progress so the OTHER gunicorn worker —
+    which answers half of the status polls — can show the real phase
+    instead of a bare "running in another process"."""
+    import json
+    try:
+        from ..ingestion.queue import _get_engine
+        with _get_engine().begin() as conn:
+            conn.execute(_t(_PROGRESS_DDL))
+            conn.execute(_t(
+                "INSERT INTO pv_batch_progress (name, info, updated_at) VALUES (:n, :i, NOW()) "
+                "ON CONFLICT (name) DO UPDATE SET info = :i, updated_at = NOW()"),
+                {"n": name, "i": json.dumps(info, ensure_ascii=False, default=str)})
+    except Exception as exc:
+        logger.debug("job_lock %s: could not save progress (%s)", name, exc)
+
+
+def load_progress(name: str) -> dict:
+    import json
+    try:
+        from ..ingestion.queue import _get_engine
+        with _get_engine().connect() as conn:
+            row = conn.execute(_t(
+                "SELECT info FROM pv_batch_progress WHERE name = :n "
+                "AND updated_at > NOW() - INTERVAL '2 hours'"), {"n": name}).first()
+        return json.loads(row[0]) if row else {}
+    except Exception:
+        return {}
+
+
 def request_stop(name: str) -> None:
     """Record a stop request in the DB, so the worker that actually runs
     the batch sees it even when the click landed on the other worker."""

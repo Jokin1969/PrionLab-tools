@@ -578,6 +578,11 @@
           <i class="fas fa-spinner fa-spin"></i>
           <span style="flex:1;"><strong>Trabajando…</strong> ${esc(phase || 'Empezando')}
             ${s && s.total ? `(${s.done}/${s.total})` : ''}
+            ${(() => {
+              const t0 = s && s.started_at ? Date.parse(/Z|[+-]\d\d:?\d\d$/.test(s.started_at) ? s.started_at : s.started_at + 'Z') : NaN;
+              const min = Math.floor((Date.now() - t0) / 60000);
+              return Number.isFinite(min) && min >= 1 ? ` · lleva ${min} min` : '';
+            })()}
             <span style="opacity:.8;"> · el resto de botones se desbloquea al terminar</span></span>
           ${IS_VC_EDITOR ? `<button type="button" id="pv-vc-stop" style="padding:3px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.6);
             background:transparent;color:white;cursor:pointer;font-size:12.5px;">Parar</button>` : ''}
