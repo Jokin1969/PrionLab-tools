@@ -2612,6 +2612,8 @@
       if (!count) { bar.style.display = 'none'; return; }
       bar.style.display = 'flex';
       const s = idx === 0 ? '' : '-top';
+      const vcBtn = document.getElementById('pv-bulk-vc' + s);
+      if (vcBtn) vcBtn.style.display = IS_VC_EDITOR ? '' : 'none';
       const countEl = document.getElementById('pv-bulk-count' + s);
       if (countEl) countEl.textContent =
         count === 1 ? '1 seleccionado' : `${count} seleccionados`;
@@ -2697,6 +2699,11 @@
                      font-size:12px;cursor:pointer;white-space:nowrap;">
         <span id="pv-bulk-only-selected-label${s}">🔍 Ver solo seleccionados</span>
       </button>
+      <button id="pv-bulk-vc${s}" type="button"
+              title="Añade los artículos seleccionados a la colección «VC ${new Date().getFullYear()}»: entran marcados en el generador de la Vigilancia competitiva."
+              style="display:none;padding:4px 10px;border-radius:6px;
+                     background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);
+                     font-size:12px;cursor:pointer;white-space:nowrap;">🔭 Proponer para VC ${new Date().getFullYear()}</button>
       <span style="flex:1;"></span>
 
       <div style="display:flex;align-items:center;gap:6px;">
@@ -2814,6 +2821,19 @@
     const s = suffix || '';
     const $id = id => document.getElementById(id + s);
     if (!$id('pv-bulk-count')) return;
+
+    // "Proponer para VC <año>" — VC editors (admins or not).
+    $id('pv-bulk-vc')?.addEventListener('click', async () => {
+      const ids = Array.from(state.selectedIds), year = new Date().getFullYear();
+      if (!ids.length) return;
+      if (!await pvConfirm(`¿Añadir ${ids.length} artículo(s) a la colección «VC ${year}»?\n\n` +
+                           'Entrarán marcados en el generador de la Vigilancia competitiva.')) return;
+      try {
+        const r = await api(`/vc/draft/${year}/propose`, { method: 'POST', body: JSON.stringify({ ids }) });
+        alert(`✓ ${r.added || 0} añadidos a «VC ${year}»` + (r.skipped ? ` (${r.skipped} ya estaban).` : '.'));
+        if (typeof loadCollections === 'function') loadCollections();
+      } catch (e) { alert('Error: ' + e.message); }
+    });
 
     // "Ver sólo seleccionados" toggle
     const onlyBtn = $id('pv-bulk-only-selected');
@@ -20467,7 +20487,7 @@
             recupere alguno.</div>
           <div id="pv-vc-sel"></div>
           ${IS_VC_EDITOR ? `<form id="pv-vc-add" style="display:flex;gap:6px;margin-top:8px;">
-              <input placeholder="Añadir por PMID" style="width:150px;padding:5px 8px;border:1px solid #d1d5db;
+              <input placeholder="Añadir por PMID (uno o varios)" title="Puedes pegar varios PMID separados por comas o espacios" style="width:230px;padding:5px 8px;border:1px solid #d1d5db;
                      border-radius:6px;font-size:12.5px;">
               <button type="submit" style="${btnCss(false)}">Añadir</button></form>` : ''}
         </section>
@@ -20546,10 +20566,17 @@
       paintSelection(year);
       $('pv-vc-add')?.addEventListener('submit', async ev => {
         ev.preventDefault();
-        const v = (ev.target.querySelector('input').value || '').trim();
-        if (!v) return;
-        try { await api(`/vc/draft/${year}/add`, { method: 'POST', body: JSON.stringify({ pmid: v }) }); renderGenerator(year); }
-        catch (e) { alert('Error: ' + e.message); }
+        const pmids = [...new Set(((ev.target.querySelector('input').value || '').match(/\d{6,9}/g) || []))];
+        if (!pmids.length) { alert('Escribe uno o varios PMID (solo números).'); return; }
+        const btn = ev.target.querySelector('button'); btn.disabled = true;
+        const failed = [];
+        for (const [k, p] of pmids.entries()) {
+          btn.textContent = pmids.length > 1 ? `Añadiendo ${k + 1}/${pmids.length}…` : 'Añadiendo…';
+          try { await api(`/vc/draft/${year}/add`, { method: 'POST', body: JSON.stringify({ pmid: p }) }); }
+          catch (e) { failed.push(`${p}: ${e.message}`); }
+        }
+        if (failed.length) alert('No se pudieron añadir:\n' + failed.join('\n'));
+        renderGenerator(year);
       });
       body.querySelectorAll('input[name="pv-vc-style"]').forEach(r => r.addEventListener('change', async () => {
         try { await api(`/vc/draft/${year}/cite-style`, { method: 'POST', body: JSON.stringify({ style: r.value }) }); }
@@ -24337,6 +24364,9 @@
             <li><strong>Marcados = lo que entra en el informe.</strong> «Agrupar en temas» y «Redactar» trabajan solo con los marcados. Los no marcados son la reserva: candidatos valorados que la IA no eligió; no se usan salvo que los marques o que, al pedir cambios al borrador, la IA recupere alguno.</li>
             <li><strong>Origen de cada artículo</strong> (color y etiqueta): 📌 <em>Colección VC</em> (los que metéis en la colección «VC año»; entran ya marcados al abrir el generador), 📚 <em>Biblioteca PrionVault</em> (están en PrionVault pero no en la colección), 🌐 <em>Solo PubMed</em> (los encuentra la app fuera) y ✋ <em>Añadidos por PMID</em>.</li>
             <li><strong>Filtros:</strong> los chips de origen muestran u ocultan cada grupo e indican marcados/total; «Todos · Marcados · Sin marcar» filtra por estado; <em>solo mi colección</em> deja a la vista únicamente la colección. <strong>Marcar / Desmarcar los visibles</strong> actúa de golpe sobre lo que se ve con los filtros puestos.</li>
+            <li><strong>Proponer artículos:</strong> marca artículos en el listado de PrionVault y pulsa <strong>🔭 Proponer para VC año</strong> en la barra azul de selección (lo ven administradores y editores de VC): se añaden a la colección «VC año» y entran marcados en el generador. También se pueden pegar varios PMID a la vez en «Añadir por PMID».</li>
+            <li><strong>Demasiados marcados:</strong> en 3.500 caracteres caben unos 40 artículos. Si hay más de 45 marcados aparece un aviso con el botón <strong>🤖 Reducir a N con IA</strong>, que elige un conjunto equilibrado entre los marcados (con preferencia por los de la colección) y desmarca el resto, que quedan como reserva.</li>
+            <li><strong>Pedir cambios a la IA (paso 4):</strong> cambia solo lo que se le pide y mantiene las citas que ya había, salvo que le pidas añadir o quitar artículos. Si la IA falla, el borrador no se toca y se muestra el motivo.</li>
             <li><strong>Número de la izquierda:</strong> en azul, la valoración a fondo de la IA (0–100, leyendo abstract, resumen IA y notas); en gris «8/10», solo el cribado por título (no llegó a la valoración a fondo); «–», sin valorar todavía.</li>
           </ul>
 

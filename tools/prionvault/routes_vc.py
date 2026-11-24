@@ -185,6 +185,21 @@ def api_vc_items_bulk(year):
     return jsonify({"ok": True, "changed": g.set_selected_many(year, ids, bool(data.get("selected")))})
 
 
+@prionvault_bp.route("/api/vc/draft/<int:year>/propose", methods=["POST"])
+@vc_editor_required
+def api_vc_propose(year):
+    """Add library articles to the collection «VC <year>»: {"ids": [...]}."""
+    from .services import vc_generate as g
+    ids = (request.get_json(silent=True) or {}).get("ids") or []
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "no_ids"}), 400
+    try:
+        res = g.propose_articles(year, ids, by_user=_viewer_id())
+    except (LookupError, ValueError) as exc:
+        return jsonify({"error": "invalid", "detail": str(exc)}), 400
+    return jsonify({"ok": True, **{k: v for k, v in (res or {}).items() if isinstance(v, (int, str, bool))}})
+
+
 @prionvault_bp.route("/api/vc/draft/<int:year>/add", methods=["POST"])
 @vc_editor_required
 def api_vc_draft_add(year):

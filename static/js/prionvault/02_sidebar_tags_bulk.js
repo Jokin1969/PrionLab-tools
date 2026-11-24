@@ -1196,6 +1196,8 @@
       if (!count) { bar.style.display = 'none'; return; }
       bar.style.display = 'flex';
       const s = idx === 0 ? '' : '-top';
+      const vcBtn = document.getElementById('pv-bulk-vc' + s);
+      if (vcBtn) vcBtn.style.display = IS_VC_EDITOR ? '' : 'none';
       const countEl = document.getElementById('pv-bulk-count' + s);
       if (countEl) countEl.textContent =
         count === 1 ? '1 seleccionado' : `${count} seleccionados`;
@@ -1281,6 +1283,11 @@
                      font-size:12px;cursor:pointer;white-space:nowrap;">
         <span id="pv-bulk-only-selected-label${s}">🔍 Ver solo seleccionados</span>
       </button>
+      <button id="pv-bulk-vc${s}" type="button"
+              title="Añade los artículos seleccionados a la colección «VC ${new Date().getFullYear()}»: entran marcados en el generador de la Vigilancia competitiva."
+              style="display:none;padding:4px 10px;border-radius:6px;
+                     background:rgba(255,255,255,0.14);color:white;border:1px solid rgba(255,255,255,0.25);
+                     font-size:12px;cursor:pointer;white-space:nowrap;">🔭 Proponer para VC ${new Date().getFullYear()}</button>
       <span style="flex:1;"></span>
 
       <div style="display:flex;align-items:center;gap:6px;">
@@ -1398,6 +1405,19 @@
     const s = suffix || '';
     const $id = id => document.getElementById(id + s);
     if (!$id('pv-bulk-count')) return;
+
+    // "Proponer para VC <año>" — VC editors (admins or not).
+    $id('pv-bulk-vc')?.addEventListener('click', async () => {
+      const ids = Array.from(state.selectedIds), year = new Date().getFullYear();
+      if (!ids.length) return;
+      if (!await pvConfirm(`¿Añadir ${ids.length} artículo(s) a la colección «VC ${year}»?\n\n` +
+                           'Entrarán marcados en el generador de la Vigilancia competitiva.')) return;
+      try {
+        const r = await api(`/vc/draft/${year}/propose`, { method: 'POST', body: JSON.stringify({ ids }) });
+        alert(`✓ ${r.added || 0} añadidos a «VC ${year}»` + (r.skipped ? ` (${r.skipped} ya estaban).` : '.'));
+        if (typeof loadCollections === 'function') loadCollections();
+      } catch (e) { alert('Error: ' + e.message); }
+    });
 
     // "Ver sólo seleccionados" toggle
     const onlyBtn = $id('pv-bulk-only-selected');

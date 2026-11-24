@@ -791,7 +791,10 @@ def _min_cited(n_selected: int) -> int:
 
 
 def validate(intro: str, advances: str, outlook: str, allowed: set[str],
-             items: Optional[list] = None) -> dict:
+             items: Optional[list] = None, coverage: bool = True) -> dict:
+    """`coverage=False` (revisions): report which selected papers are not
+    cited but do not demand them — the authors asked for specific changes
+    only, not for a rewrite that squeezes more citations in."""
     total = len(intro) + len(advances) + len(outlook) + 2   # paragraph separators
     shares = [len(p) / max(1, total) for p in (intro, advances, outlook)]
     cited = _cited_ids(" ".join((intro, advances, outlook)))
@@ -816,7 +819,7 @@ def validate(intro: str, advances: str, outlook: str, allowed: set[str],
                if str(it.get("pmid") or "") not in cset and (it.get("doi") or "").lower() not in cset]
     need = _min_cited(len(items)) if items else 10
     n_cited = (len(items) - len(missing)) if items else len(cset)
-    if n_cited < need:
+    if n_cited < need and coverage:
         msg = (f"Only {n_cited} of the {len(items) if items else 'provided'} selected papers are cited; "
                f"cite at least {need}.")
         if missing:
@@ -881,26 +884,36 @@ def _paper_lines(items: list[dict], themes: list[dict], style: str) -> list[str]
     return lines
 
 
+def _has_text(draft) -> bool:
+    return isinstance(draft, dict) and bool((draft.get("intro") or "").strip()
+                                            and (draft.get("advances") or "").strip())
+
+
 def _comply(draft: dict, user: str, system: str, allowed: set[str], *, max_rounds: int = 3,
-            keep: str = "", items: Optional[list] = None) -> tuple[dict, dict, int]:
+            keep: str = "", items: Optional[list] = None, coverage: bool = True) -> tuple[dict, dict, int]:
     """Re-ask until the draft passes validation (or rounds run out)."""
-    check = validate(draft.get("intro", ""), draft.get("advances", ""), draft.get("outlook", ""), allowed, items)
+    check = validate(draft.get("intro", ""), draft.get("advances", ""), draft.get("outlook", ""), allowed,
+                     items, coverage)
     rounds = 0
     while not check["ok"] and rounds < max_rounds and not _stopped():
         rounds += 1
         _set(phase=f"Ajustando formato ({'; '.join(check['problems'])[:110]})")
-        draft = _call(system,
+        new = _call(system,
                       user + "\n\nYOUR PREVIOUS DRAFT:\n" + json.dumps(draft, ensure_ascii=False) +
                       "\n\nRevise it to fix ALL of these problems, keeping its content and style" +
                       (f" — and keeping these requested changes: {keep}" if keep else "") + ":\n- " +
                       "\n- ".join(check["problems"]),
                       strong=True, max_tokens=4000)
-        check = validate(draft.get("intro", ""), draft.get("advances", ""), draft.get("outlook", ""), allowed, items)
+        if not _has_text(new):      # a failed call must not wipe the draft
+            break
+        draft = new
+        check = validate(draft.get("intro", ""), draft.get("advances", ""), draft.get("outlook", ""), allowed,
+                         items, coverage)
     return draft, check, rounds
 
 
 def _factcheck_and_fix(draft: dict, check: dict, user: str, system: str, items: list[dict],
-                       allowed: set[str], keep: str = "") -> tuple[dict, dict, list, list]:
+                       allowed: set[str], keep: str = "", coverage: bool = True) -> tuple[dict, dict, list, list]:
     issues, fixed = [], []
     if _stopped():
         return draft, check, fixed, issues
@@ -923,8 +936,8 @@ def _factcheck_and_fix(draft: dict, check: dict, user: str, system: str, items: 
                             ("\n\nAlso fix: " + "; ".join(check["problems"]) if check["problems"] else ""),
                             strong=True, max_tokens=4000)
             rcheck = validate(revised.get("intro", ""), revised.get("advances", ""),
-                              revised.get("outlook", ""), allowed, items)
-            if rcheck["ok"] or not check["ok"]:
+                              revised.get("outlook", ""), allowed, items, coverage)
+            if _has_text(revised) and (rcheck["ok"] or not check["ok"]):
                 draft, check = revised, rcheck
                 break
         try:
@@ -987,6 +1000,8 @@ def step_write(year: int, instructions: str = "", by_user=None) -> dict:
             + (f"\n\nAdditional instructions from the authors: {instructions}" if instructions else ""))
     _set(phase="Redactando", done=0, total=0)
     draft = _call(system, user, strong=True, max_tokens=4000)
+    if not _has_text(draft):
+        raise ValueError("La IA no devolvió el texto del informe. Vuelve a pulsar «Redactar».")
     draft, check, rounds = _comply(draft, user, system, allowed, items=items)
     draft, check, fixed, issues = _factcheck_and_fix(draft, check, user, system, items, allowed)
     info = {**check, "attempts": rounds + 1, "instructions": instructions[:500],
@@ -1011,7 +1026,9 @@ _REVISE_SYSTEM_EXTRA = """
 You are now REVISING an existing draft at the authors' request. Apply exactly what they ask (add sentences where \
 they say, remove what they say, cite or stop citing the papers they mention, change tone or emphasis…) and leave \
 everything else as it is — same wording wherever no change was requested. Only if the requested changes push the \
-text over the length limit, tighten other sentences slightly. Also return "changes": a short list, in Spanish, \
+text over the length limit, tighten other sentences slightly. In this revision the rule about citing all the \
+selected papers does NOT apply: keep exactly the citations the draft already has, plus or minus the ones the \
+authors ask for (if they ask to cite the missing papers, or more papers, then do add them). Also return "changes": a short list, in Spanish, \
 of what you changed. JSON: {"title": "...", "intro": "...", "advances": "...", "outlook": "...", \
 "changes": ["..."]}"""
 
@@ -1094,10 +1111,16 @@ def step_revise(year: int, request: str, by_user=None) -> dict:
             f"\n\nTHE AUTHORS ASK:\n{request}{paper_note}")
     _set(phase="Aplicando los cambios")
     revised = _call(system, user, strong=True, max_tokens=4500)
+    if not _has_text(revised):
+        # Nothing is saved: the draft stays exactly as it was.
+        raise ValueError("La IA no devolvió el texto revisado; el borrador no se ha tocado. Vuelve a intentarlo.")
+    if not (revised.get("title") or "").strip():
+        revised["title"] = draft["title"]
     changes = [str(c) for c in revised.get("changes") or []][:20]
-    revised, check, rounds = _comply(revised, user, system, allowed, max_rounds=2, keep=request[:600], items=items)
+    revised, check, rounds = _comply(revised, user, system, allowed, max_rounds=2, keep=request[:600],
+                                     items=items, coverage=False)
     revised, check, fixed, issues = _factcheck_and_fix(revised, check, user, system, items, allowed,
-                                                       keep=request[:600])
+                                                       keep=request[:600], coverage=False)
     summary = "; ".join(changes) or "Cambios aplicados."
     if added:
         summary += f" · Artículos añadidos: {', '.join(added)}"
@@ -1355,6 +1378,19 @@ def set_selected(item_id: int, selected: bool) -> None:
         conn.execute(sql_text(
             "UPDATE prionvault_vc_item SET selected = :s, manual = TRUE, updated_at = NOW() WHERE id = :id"),
             {"s": bool(selected), "id": item_id})
+
+
+def propose_articles(year: int, article_ids: list, by_user=None) -> dict:
+    """Put library articles in the collection "VC <year>" (the lab's
+    proposals for the report). For VC editors who are not admins and so
+    cannot use the general collection tools."""
+    from . import collections as _coll, vc
+    ids = [str(a) for a in article_ids][:500]
+    if not ids:
+        return {"added": 0}
+    res = _coll.add_articles(vc.ensure_collection(year), ids, added_by=by_user)
+    sync_collection(year)
+    return res
 
 
 def add_pmid(year: int, pmid: str) -> None:

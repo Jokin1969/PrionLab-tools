@@ -374,7 +374,7 @@
             recupere alguno.</div>
           <div id="pv-vc-sel"></div>
           ${IS_VC_EDITOR ? `<form id="pv-vc-add" style="display:flex;gap:6px;margin-top:8px;">
-              <input placeholder="Añadir por PMID" style="width:150px;padding:5px 8px;border:1px solid #d1d5db;
+              <input placeholder="Añadir por PMID (uno o varios)" title="Puedes pegar varios PMID separados por comas o espacios" style="width:230px;padding:5px 8px;border:1px solid #d1d5db;
                      border-radius:6px;font-size:12.5px;">
               <button type="submit" style="${btnCss(false)}">Añadir</button></form>` : ''}
         </section>
@@ -453,10 +453,17 @@
       paintSelection(year);
       $('pv-vc-add')?.addEventListener('submit', async ev => {
         ev.preventDefault();
-        const v = (ev.target.querySelector('input').value || '').trim();
-        if (!v) return;
-        try { await api(`/vc/draft/${year}/add`, { method: 'POST', body: JSON.stringify({ pmid: v }) }); renderGenerator(year); }
-        catch (e) { alert('Error: ' + e.message); }
+        const pmids = [...new Set(((ev.target.querySelector('input').value || '').match(/\d{6,9}/g) || []))];
+        if (!pmids.length) { alert('Escribe uno o varios PMID (solo números).'); return; }
+        const btn = ev.target.querySelector('button'); btn.disabled = true;
+        const failed = [];
+        for (const [k, p] of pmids.entries()) {
+          btn.textContent = pmids.length > 1 ? `Añadiendo ${k + 1}/${pmids.length}…` : 'Añadiendo…';
+          try { await api(`/vc/draft/${year}/add`, { method: 'POST', body: JSON.stringify({ pmid: p }) }); }
+          catch (e) { failed.push(`${p}: ${e.message}`); }
+        }
+        if (failed.length) alert('No se pudieron añadir:\n' + failed.join('\n'));
+        renderGenerator(year);
       });
       body.querySelectorAll('input[name="pv-vc-style"]').forEach(r => r.addEventListener('change', async () => {
         try { await api(`/vc/draft/${year}/cite-style`, { method: 'POST', body: JSON.stringify({ style: r.value }) }); }
