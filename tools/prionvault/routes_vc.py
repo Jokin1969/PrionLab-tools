@@ -83,6 +83,12 @@ def api_vc_report(year):
     rep = vc.get_report(year)
     if not rep:
         return jsonify({"error": "not_found"}), 404
+    # A closed report's collection must hold its cited articles: put back
+    # any that were taken out of «VC año» by hand.
+    try:
+        rep["relinked"] = vc.relink_collection(year)
+    except Exception as exc:
+        logger.warning("vc: relink of %s failed: %s", year, exc)
     return jsonify(rep)
 
 

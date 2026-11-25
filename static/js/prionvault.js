@@ -20312,6 +20312,7 @@
     }
 
     function renderReport(rep, meta) {
+      if (rep.relinked) refreshCollections();   // cited articles were put back in «VC año»
       const body = $('pv-vc-body');
       const chars = rep.paragraphs.join(' ').length;
       const counts = {};

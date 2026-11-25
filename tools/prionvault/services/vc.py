@@ -435,6 +435,29 @@ def list_reports() -> list[dict]:
     return out
 
 
+def relink_collection(year: int) -> int:
+    """Make sure every article cited by a closed report is in its «VC año»
+    collection (they can be taken out by hand from the listing). Returns
+    how many were put back."""
+    with _get_engine().connect() as conn:
+        st = conn.execute(sql_text(
+            "SELECT status FROM prionvault_vc_report WHERE year = :y"), {"y": year}).scalar()
+        if not st or st == "draft":
+            return 0
+        cid = ensure_collection(year)
+        missing = [str(r[0]) for r in conn.execute(sql_text("""
+            SELECT DISTINCT v.article_id FROM prionvault_vc_ref v
+              JOIN articles a ON a.id = v.article_id
+             WHERE v.year = :y
+               AND NOT EXISTS (SELECT 1 FROM prionvault_collection_article ca
+                                WHERE ca.collection_id = CAST(:c AS uuid)
+                                  AND ca.article_id = v.article_id)"""), {"y": year, "c": cid})]
+    if not missing:
+        return 0
+    from . import collections as _coll
+    return _coll.add_articles(cid, missing).get("added", 0)
+
+
 def get_report(year: int) -> Optional[dict]:
     with _get_engine().connect() as conn:
         rep = conn.execute(sql_text(
