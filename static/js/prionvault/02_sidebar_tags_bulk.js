@@ -242,7 +242,20 @@
   // collection tree the sidebar uses, with checkboxes so multiple
   // destinations can be picked in one pass. Smart collections are
   // hidden — the backend rejects POST to them.
-  const _BULK_COLL_STATE = { articleIds: [], picked: new Set(), items: [] };
+  // `initial[cid]` = how many of the selected articles are already in that
+  // collection; `want[cid]` = true (put all in) / false (take all out) once
+  // the user touches its checkbox. Untouched collections are left alone.
+  const _BULK_COLL_STATE = { articleIds: [], items: [], initial: {}, want: {} };
+
+  function _bulkCollChanges() {
+    const n = _BULK_COLL_STATE.articleIds.length, add = [], remove = [];
+    Object.entries(_BULK_COLL_STATE.want).forEach(([cid, on]) => {
+      const have = _BULK_COLL_STATE.initial[cid] || 0;
+      if (on && have < n) add.push(cid);
+      if (!on && have > 0) remove.push(cid);
+    });
+    return { add, remove };
+  }
 
   async function openAddToCollectionPicker(articleIds) {
     if (!articleIds || !articleIds.length) {
@@ -253,12 +266,16 @@
     if (!modal) return alert('UI: pv-bulk-collection-modal no está montado.');
 
     _BULK_COLL_STATE.articleIds = articleIds.slice();
-    _BULK_COLL_STATE.picked.clear();
     _BULK_COLL_STATE.items     = [];
+    _BULK_COLL_STATE.initial   = {};
+    _BULK_COLL_STATE.want      = {};
+    const title = document.getElementById('pv-bulk-coll-title');
+    if (title) title.textContent = 'Colecciones de los artículos seleccionados';
 
     // Reset transient UI on every open.
     document.getElementById('pv-bulk-coll-summary').textContent =
-      `Marca las colecciones donde quieres meter ${articleIds.length} artículo${articleIds.length === 1 ? '' : 's'}. Puedes elegir varias.`;
+      `${articleIds.length} artículo${articleIds.length === 1 ? '' : 's'} seleccionado${articleIds.length === 1 ? '' : 's'}. ` +
+      'Las colecciones donde ya están aparecen marcadas: marca una para añadirlos, desmárcala para sacarlos de ella.';
     document.getElementById('pv-bulk-coll-search').value  = '';
     document.getElementById('pv-bulk-coll-result').textContent = '';
     _bulkCollSyncSubmit();
@@ -267,8 +284,13 @@
     modal.style.display = 'flex';
 
     try {
-      const r = await api('/collections');
+      const [r, m] = await Promise.all([
+        api('/collections'),
+        api('/collections/membership', { method: 'POST', body: JSON.stringify({ ids: articleIds }) })
+          .catch(() => ({ counts: {} })),
+      ]);
       _BULK_COLL_STATE.items = (r.items || []).filter(c => c.kind === 'manual');
+      _BULK_COLL_STATE.initial = m.counts || {};
     } catch (e) {
       document.getElementById('pv-bulk-coll-tree').innerHTML =
         `<div style="color:#b91c1c;padding:14px;font-size:13px;">No se pudieron cargar las colecciones: ${esc(e.message)}</div>`;
@@ -345,7 +367,19 @@
         subBranch[sg]
           .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
           .forEach(c => {
-            const checked = _BULK_COLL_STATE.picked.has(c.id) ? 'checked' : '';
+            const nSel = _BULK_COLL_STATE.articleIds.length;
+            const have = _BULK_COLL_STATE.initial[c.id] || 0;
+            const want = _BULK_COLL_STATE.want[c.id];
+            const isOn = want === undefined ? have === nSel : want;
+            const partial = want === undefined && have > 0 && have < nSel;
+            const checked = isOn ? 'checked' : '';
+            const badge = want === true && have < nSel
+              ? `<span style="color:#15803d;font-size:11.5px;flex-shrink:0;">+ añadir ${nSel - have}</span>`
+              : want === false && have > 0
+                ? `<span style="color:#b91c1c;font-size:11.5px;flex-shrink:0;">− quitar ${have}</span>`
+                : have > 0
+                  ? `<span style="color:#0F3460;font-size:11.5px;flex-shrink:0;" title="Artículos de tu selección que ya están en esta colección">${have === nSel ? (nSel === 1 ? 'ya está' : 'ya están todos') : `ya están ${have} de ${nSel}`}</span>`
+                  : '';
             const dot = c.color
               ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${esc(c.color)};flex-shrink:0;"></span>`
               : '';
@@ -356,12 +390,13 @@
                 `onmouseover="this.style.background='#eef2ff';"` +
                 `onmouseout="this.style.background='transparent';">` +
                 `<input type="checkbox" class="pv-bulk-coll-cb" data-cid="${esc(c.id)}" ${checked} ` +
-                  `style="margin:0;cursor:pointer;">` +
+                  `${partial ? 'data-partial="1" ' : ''}style="margin:0;cursor:pointer;">` +
                 dot +
                 `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#111827;">` +
                   esc(c.name) +
                 `</span>` +
-                `<span style="color:#9ca3af;font-size:11.5px;flex-shrink:0;">${c.article_count || 0}</span>` +
+                badge +
+                `<span style="color:#9ca3af;font-size:11.5px;flex-shrink:0;" title="Artículos en la colección">${c.article_count || 0}</span>` +
               `</label>`
             );
           });
@@ -371,31 +406,31 @@
     container.innerHTML = html.join('');
     // Wire the freshly-rendered checkboxes.
     container.querySelectorAll('.pv-bulk-coll-cb').forEach(cb => {
+      // Only part of the selection is in this collection: show the dash.
+      if (cb.dataset.partial) cb.indeterminate = true;
       cb.addEventListener('change', () => {
-        const cid = cb.dataset.cid;
-        if (cb.checked) _BULK_COLL_STATE.picked.add(cid);
-        else            _BULK_COLL_STATE.picked.delete(cid);
+        _BULK_COLL_STATE.want[cb.dataset.cid] = cb.checked;
         _bulkCollSyncSubmit();
+        _renderBulkCollTree(document.getElementById('pv-bulk-coll-search')?.value || '');
       });
     });
   }
 
   function _bulkCollSyncSubmit() {
-    const n = _BULK_COLL_STATE.picked.size;
+    const { add, remove } = _bulkCollChanges();
+    const n = add.length + remove.length;
     const btn   = document.getElementById('pv-bulk-coll-submit');
     const count = document.getElementById('pv-bulk-coll-count');
     if (count) {
-      count.textContent = n === 0 ? '0 colecciones seleccionadas'
-                         : n === 1 ? '1 colección seleccionada'
-                         :          `${n} colecciones seleccionadas`;
+      count.textContent = n === 0 ? 'Sin cambios'
+        : [add.length ? `añadir a ${add.length}` : '', remove.length ? `quitar de ${remove.length}` : '']
+            .filter(Boolean).join(' · ');
     }
     if (btn) {
       btn.disabled        = n === 0;
       btn.style.opacity   = n === 0 ? '0.5' : '1';
       btn.style.cursor    = n === 0 ? 'not-allowed' : 'pointer';
-      btn.textContent     = n === 0
-        ? 'Añadir'
-        : `Añadir a ${n} colección${n === 1 ? '' : 'es'}`;
+      btn.textContent     = n === 0 ? 'Aplicar' : `Aplicar ${n} cambio${n === 1 ? '' : 's'}`;
     }
   }
 
@@ -419,13 +454,18 @@
 
     document.getElementById('pv-bulk-coll-submit')?.addEventListener('click', async () => {
       const ids = _BULK_COLL_STATE.articleIds.slice();
-      const targets = Array.from(_BULK_COLL_STATE.picked);
-      if (!targets.length || !ids.length) return;
+      const { add: targets, remove: removals } = _bulkCollChanges();
+      if ((!targets.length && !removals.length) || !ids.length) return;
+      if (removals.length) {
+        const names = removals.map(cid => (_BULK_COLL_STATE.items.find(c => c.id === cid) || {}).name || cid);
+        if (!await pvConfirm(`Vas a sacar ${ids.length === 1 ? 'el artículo' : 'los artículos seleccionados'} de:\n\n· ` +
+            names.join('\n· ') + '\n\nLos artículos no se borran, solo dejan de estar en esas colecciones. ¿Continuar?')) return;
+      }
 
       const submit = document.getElementById('pv-bulk-coll-submit');
       const orig   = submit.textContent;
       submit.disabled = true;
-      submit.textContent = 'Añadiendo…';
+      submit.textContent = 'Aplicando…';
       const result = document.getElementById('pv-bulk-coll-result');
 
       // Resolve each collection sequentially — POSTs are cheap and
@@ -444,6 +484,16 @@
           totalAdded += r.added || 0;
           lines.push(`✓ ${name}: +${r.added || 0}` +
                      (r.skipped ? ` (${r.skipped} ya estaban)` : ''));
+        } catch (e) {
+          lines.push(`✗ ${name}: ${e.message}`);
+        }
+      }
+      for (const cid of removals) {
+        const meta = _BULK_COLL_STATE.items.find(c => c.id === cid);
+        const name = meta ? meta.name : cid;
+        try {
+          const r = await api(`/collections/${cid}/articles`, { method: 'DELETE', body: JSON.stringify({ ids }) });
+          lines.push(`✓ ${name}: −${r.removed || 0}`);
         } catch (e) {
           lines.push(`✗ ${name}: ${e.message}`);
         }

@@ -4108,6 +4108,33 @@ def api_collections_article_ids(cid):
     return jsonify({"ids": ids, "count": len(ids)})
 
 
+@prionvault_bp.route("/api/collections/membership", methods=["POST"])
+@login_required
+def api_collections_membership():
+    """Body: { ids: [article uuid, …] } → { counts: { collection_id: n } }:
+    how many of those articles are (hand-added) members of each collection.
+    Lets the bulk picker show where the selection already is."""
+    data = request.get_json(force=True, silent=True) or {}
+    ids = [str(x) for x in (data.get("ids") or []) if x]
+    if not ids:
+        return jsonify({"counts": {}})
+    if len(ids) > 10_000:
+        return jsonify({"error": "too_many"}), 400
+    s = _session()
+    try:
+        rows = s.execute(sql_text("""
+            SELECT collection_id::text, COUNT(*)
+              FROM prionvault_collection_article
+             WHERE article_id = ANY(CAST(:ids AS uuid[]))
+             GROUP BY collection_id"""), {"ids": ids}).all()
+    except Exception as exc:
+        logger.warning("collections membership failed: %s", exc)
+        return jsonify({"error": "invalid", "detail": str(exc)[:200]}), 400
+    finally:
+        s.close()
+    return jsonify({"counts": {r[0]: int(r[1]) for r in rows}})
+
+
 @prionvault_bp.route("/api/collections/<uuid:cid>/articles", methods=["POST"])
 @admin_required
 def api_collections_add_articles(cid):
