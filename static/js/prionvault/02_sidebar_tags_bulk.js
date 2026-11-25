@@ -1175,6 +1175,13 @@
         setTimeout(more, 0);
       }
       state.lastTotal = r.total || 0;
+      // The sidebar counts are loaded once; articles can enter a collection
+      // from elsewhere (the VC generator, another user…). When a collection
+      // is being viewed, bring its count up to date (at most every 15 s).
+      if (state.collectionId && Date.now() - (state._collRefreshedAt || 0) > 15000) {
+        state._collRefreshedAt = Date.now();
+        refreshCollections();
+      }
       refreshSortHeaders();
       renderPagination(r);
       updateBulkBar();
@@ -1465,7 +1472,7 @@
       try {
         const r = await api(`/vc/draft/${year}/propose`, { method: 'POST', body: JSON.stringify({ ids }) });
         alert(`✓ ${r.added || 0} añadidos a «VC ${year}»` + (r.skipped ? ` (${r.skipped} ya estaban).` : '.'));
-        if (typeof loadCollections === 'function') loadCollections();
+        refreshCollections();
       } catch (e) { alert('Error: ' + e.message); }
     });
 

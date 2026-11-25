@@ -26,6 +26,7 @@
 
     function close() {
       $('pv-vc-modal').style.display = 'none'; stopPoll();
+      refreshCollections();   // the generator may have changed «VC año»
       if (_genPoll) { clearInterval(_genPoll); _genPoll = null; }
     }
 
