@@ -20,7 +20,12 @@ if os.environ.get("SENTRY_DSN"):
         "qpdf:",
         "jpeg data is corrupt",
         "ocrmypdf: warning",
+        "could not be decoded",          # damaged stream inside a PDF (PRIONVAULT-33)
     )
+    # Third-party PDF libraries log damaged-but-recoverable input at ERROR.
+    # Our own batch code reports real failures per article ("error:
+    # ocrmypdf failed…" in the batch status), so their loggers are noise.
+    _SENTRY_NOISE_LOGGERS = ("ocrmypdf", "pikepdf", "pdfminer", "PIL")
 
     # Exception TYPE names (not message text) we don't want alerts for —
     # these fire when a browser aborts a chunked upload mid-transfer
@@ -40,6 +45,10 @@ if os.environ.get("SENTRY_DSN"):
             if not msg and event.get("logentry"):
                 msg = (event["logentry"].get("message") or "").lower()
             if any(p in msg for p in _SENTRY_NOISE_PATTERNS):
+                return None    # drop
+            lg = event.get("logger") or ""
+            if not event.get("exception") and any(
+                    lg == n or lg.startswith(n + ".") for n in _SENTRY_NOISE_LOGGERS):
                 return None    # drop
             exc_values = (event.get("exception") or {}).get("values") or []
             if any(v.get("type") in _SENTRY_NOISE_EXCEPTION_TYPES for v in exc_values):
