@@ -791,7 +791,7 @@
         if (sgCollapsed) return;
         colls
           .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
-          .forEach(c => container.appendChild(buildCollectionRow(c, !!g)));
+          .forEach(c => container.appendChild(buildCollectionRow(c, !!g, !!sg)));
       });
     });
     repaintCollectionSelection();
@@ -824,7 +824,7 @@
     const uniqueArticles = r.unique_articles ?? rawTotal;
     const chipNumber = rawTotal;   // headline number
     const btn = document.createElement('button');
-    btn.className = 'pv-nav-btn';
+    btn.className = 'pv-nav-btn pv-coll-group';
     btn.dataset.collectionGroup = group;
     btn.title = `Filtrar por grupo "${group}" — ` +
                 `${subgroupCount} subgrupo${subgroupCount === 1 ? '' : 's'}, ` +
@@ -844,7 +844,7 @@
       ><i class="fas ${chev}" style="font-size:9px;"></i></span>
       <span style="display:inline-flex;align-items:center;gap:6px;min-width:0;overflow:hidden;flex:1;">
         <i class="fas fa-folder-open" style="font-size:11px;opacity:0.7;"></i>
-        <span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(group)}</span>
+        <span class="pv-coll-name" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(group)}</span>
       </span>
       <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${chipNumber}</span>
       ${IS_ADMIN ? `<span class="pv-coll-rename"
@@ -993,7 +993,7 @@
     const rawTotal       = colls.reduce((acc, c) => acc + (c.article_count || 0), 0);
     const chipNumber     = rawTotal;
     const btn = document.createElement('button');
-    btn.className = 'pv-nav-btn';
+    btn.className = 'pv-nav-btn pv-coll-subgroup';
     btn.dataset.collectionGroup    = group;
     btn.dataset.collectionSubgroup = subgroup;
     btn.title = `Filtrar por "${group} · ${subgroup}" — ` +
@@ -1014,7 +1014,7 @@
       ><i class="fas ${chev}" style="font-size:8.5px;"></i></span>
       <span style="display:inline-flex;align-items:center;gap:6px;min-width:0;overflow:hidden;flex:1;">
         <i class="fas fa-folder" style="font-size:10px;opacity:0.55;"></i>
-        <span style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(subgroup)}</span>
+        <span class="pv-coll-name" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(subgroup)}</span>
       </span>
       <span style="font-size:10px;background:rgba(255,255,255,0.14);padding:1px 7px;border-radius:20px;flex-shrink:0;">${chipNumber}</span>
       ${IS_ADMIN ? `<span class="pv-coll-rename"
@@ -1082,9 +1082,12 @@
     return btn;
   }
 
-  function buildCollectionRow(c, indented) {
+  function buildCollectionRow(c, indented, underSubgroup) {
     const btn = document.createElement('button');
-    btn.className = 'pv-nav-btn pv-coll-row';
+    // Stable classes: the phone stylesheet sets sizes and indentation by
+    // level (group › subgroup › collection) from these.
+    btn.className = 'pv-nav-btn pv-coll-row' +
+      (underSubgroup ? ' pv-coll-lvl3' : indented ? ' pv-coll-lvl2' : '');
     btn.dataset.collectionId = c.id;
     if (indented) btn.style.paddingLeft = '34px';
     const kindIcon = c.kind === 'smart'

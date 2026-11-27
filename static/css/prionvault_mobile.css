@@ -43,6 +43,20 @@ body.pv-mobile-drawer-open::before {
 }
 #pv-sidebar-resize { display: none !important; }
 #pv-sidebar .pv-nav-btn { min-height: 44px; padding: 10px 14px !important; font-size: 15px !important; }
+/* Collections tree: the headers must read as headers (bigger and bolder than
+   what hangs from them) and each level is indented under its parent — the
+   generic rule above had flattened both. */
+#pv-sidebar .pv-coll-group    { padding-left: 10px !important; }
+#pv-sidebar .pv-coll-subgroup { padding-left: 26px !important; }
+#pv-sidebar .pv-coll-row.pv-coll-lvl2 { padding-left: 40px !important; }
+#pv-sidebar .pv-coll-row.pv-coll-lvl3 { padding-left: 54px !important; }
+#pv-sidebar .pv-coll-group .pv-coll-name    { font-size: 16px !important; font-weight: 700; }
+#pv-sidebar .pv-coll-subgroup .pv-coll-name { font-size: 15px !important; font-weight: 600; }
+#pv-sidebar .pv-coll-row { font-size: 14.5px !important; min-height: 40px; }
+#pv-sidebar .pv-coll-group .fa-folder-open,
+#pv-sidebar .pv-coll-subgroup .fa-folder { font-size: 14px !important; }
+#pv-sidebar .pv-coll-chevron { width: 26px !important; height: 26px !important; }
+#pv-sidebar .pv-coll-chevron i { font-size: 12px !important; }
 
 .pv-mobile-hide { display: none !important; }
 
