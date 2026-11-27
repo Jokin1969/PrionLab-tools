@@ -55,6 +55,16 @@
     return wrap;
   }
 
+  // Phones: the free-form board (drag anywhere, resize) does not fit a
+  // narrow touch screen, so notes are shown as a plain vertical list. Their
+  // desktop position and size are left untouched.
+  const isPhone = () => window.matchMedia && window.matchMedia('(max-width: 800px)').matches;
+  function autoGrow(ta) {
+    if (!isPhone()) return;
+    ta.style.height = 'auto';
+    ta.style.height = Math.max(64, ta.scrollHeight + 2) + 'px';
+  }
+
   function lsGet(key) { try { return localStorage.getItem('home_notas.' + key); } catch (_) { return null; } }
   function lsSet(key, val) { try { localStorage.setItem('home_notas.' + key, val); } catch (_) { /* noop */ } }
 
@@ -249,6 +259,7 @@
     const footEl = el('div', { class: 'hn-card-foot', text: _notaFootText(nota) });
     let saveTimer = null;
     ta.addEventListener('input', () => {
+      autoGrow(ta);
       clearTimeout(saveTimer);
       saveTimer = setTimeout(async () => {
         try {
@@ -259,6 +270,7 @@
     });
     card.appendChild(ta);
     card.appendChild(footEl);
+    if (isPhone()) requestAnimationFrame(() => autoGrow(ta));
 
     card.addEventListener('pointerdown', (ev) => {
       if (ev.target === card || ev.target === colorRow) ta.focus();
@@ -269,6 +281,7 @@
     let resizing = false, rsStartX = 0, rsStartY = 0, rsOrigW = 0, rsOrigH = 0, rsTheta = 0;
     resizeHandle.addEventListener('pointerdown', (ev) => {
       ev.stopPropagation();
+      if (isPhone()) return;
       resizing = true; resizeHandle.setPointerCapture(ev.pointerId);
       rsStartX = ev.clientX; rsStartY = ev.clientY;
       rsOrigW = parseFloat(card.style.width) || card.offsetWidth;
@@ -309,6 +322,7 @@
     let dragging = false, startX = 0, startY = 0, origX = 0, origY = 0;
     head.addEventListener('pointerdown', (ev) => {
       if (ev.target.closest('button')) return;
+      if (isPhone()) return;          // list layout: nothing to drag, keep the desktop position
       dragging = true; head.setPointerCapture(ev.pointerId);
       startX = ev.clientX; startY = ev.clientY;
       origX = parseFloat(card.style.left) || 0; origY = parseFloat(card.style.top) || 0;
@@ -338,7 +352,8 @@
   async function openHomeNotasBoard() {
     const overlay = el('div', { class: 'hn-modal-overlay hn-overlay' });
     document.body.appendChild(overlay);
-    const panel = el('div', { class: 'hn-panel' });
+    const phone = isPhone();
+    const panel = el('div', { class: 'hn-panel' + (phone ? ' hn-phone' : '') });
     overlay.appendChild(panel);
     const _close = () => { overlay.remove(); document.removeEventListener('keydown', _esc); _syncHomeNotasIcon(); };
     function _esc(e) { if (e.key === 'Escape') _close(); }
@@ -356,7 +371,7 @@
 
     const tabsRow = el('div', { class: 'hn-tabs' });
     panel.appendChild(tabsRow);
-    panel.appendChild(el('p', { class: 'hn-help', style: 'margin:8px 0 8px 14px;font-size:.78rem', text: 'Arrastra una nota por su cabecera para moverla. Quien puede verla, puede editarla — así ves los cambios de quien te responde.' }));
+    panel.appendChild(el('p', { class: 'hn-help', style: 'margin:8px 0 8px 14px;font-size:.78rem', text: (phone ? '' : 'Arrastra una nota por su cabecera para moverla. ') + 'Quien puede verla, puede editarla — así ves los cambios de quien te responde.' }));
     const canvas = el('div', { class: 'hn-canvas' });
     panel.appendChild(canvas);
 
@@ -367,13 +382,14 @@
     panel.appendChild(panelResizeHandle);
     let savedSize = null;
     try { savedSize = JSON.parse(lsGet('panel_size') || 'null'); } catch (_) { /* noop */ }
-    if (savedSize && savedSize.w && savedSize.h) {
+    if (!phone && savedSize && savedSize.w && savedSize.h) {
       panel.style.width = Math.max(PANEL_MIN_W, Math.min(window.innerWidth - 40, savedSize.w)) + 'px';
       panel.style.height = Math.max(PANEL_MIN_H, Math.min(window.innerHeight - 40, savedSize.h)) + 'px';
     }
     let prSizing = false, prStartX = 0, prStartY = 0, prOrigW = 0, prOrigH = 0;
     panelResizeHandle.addEventListener('pointerdown', (ev) => {
       ev.stopPropagation();
+      if (isPhone()) return;
       prSizing = true; panelResizeHandle.setPointerCapture(ev.pointerId);
       prStartX = ev.clientX; prStartY = ev.clientY;
       const rect = panel.getBoundingClientRect();
@@ -515,6 +531,7 @@
         const emptyMsg = canvas.querySelector('.hn-empty'); if (emptyMsg) emptyMsg.remove();
         const card = _buildNotaCard(r.nota, canvas, users, false);
         canvas.appendChild(card);
+        if (isPhone()) card.scrollIntoView({ block: 'center' });
         const ta = card.querySelector('textarea'); if (ta) ta.focus();
         await _loadTablones(); _renderTabs();
       } catch (e) { toast('No se pudo crear la nota: ' + (e.message || e), 'error'); }

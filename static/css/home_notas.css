@@ -190,3 +190,60 @@
   .hn-card-autor, .hn-mini-btn, .hn-ta, .hn-card-foot { color: rgba(0,0,0,.72); }
   .hn-mini-btn.has-viewers { color: #1e3a8a; }
 }
+
+/* ══ Phones (≤800px): full-screen board, notes as a vertical list ═══════════
+   The desktop board places notes freely and lets you drag and resize them;
+   on a narrow touch screen that meant a panel wider than the screen, notes
+   off to the side and controls too small to tap. Desktop is not affected. */
+@media (max-width: 800px) {
+  .hn-overlay { padding: 0; }
+  .hn-panel.hn-phone {
+    min-width: 0; min-height: 0; width: 100vw !important; height: 100vh !important; height: 100dvh !important;
+    border-radius: 0; padding-bottom: env(safe-area-inset-bottom);
+  }
+  .hn-phone .hn-panel-hdr { padding: calc(10px + env(safe-area-inset-top)) 12px 10px; gap: 8px; }
+  .hn-phone .hn-panel-title { font-size: 1.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hn-phone .hn-btn-primary { min-height: 42px; white-space: nowrap; }
+  .hn-phone .hn-modal-close { font-size: 1.9rem; min-width: 44px; min-height: 44px; }
+  .hn-phone .hn-panel-resize { display: none; }
+  .hn-phone > .hn-help { margin: 6px 12px !important; }
+
+  .hn-phone .hn-tabs { padding: 8px 10px; gap: 6px; -webkit-overflow-scrolling: touch; }
+  .hn-phone .hn-tab, .hn-phone .hn-tab-new { min-height: 42px; font-size: .92rem; flex-shrink: 0; }
+  /* no hover on touch: the rename/delete buttons show on the active board */
+  .hn-phone .hn-tab:hover .hn-tab-acts { display: none; }
+  .hn-phone .hn-tab.active .hn-tab-acts { display: inline-flex; gap: 6px; margin-left: 6px; }
+  .hn-phone .hn-tab-acts button { font-size: .95rem; padding: 8px 9px; }
+
+  .hn-phone .hn-canvas {
+    display: flex; flex-direction: column; gap: 14px; padding: 12px 12px 28px;
+    overflow-x: hidden; -webkit-overflow-scrolling: touch;
+  }
+  .hn-phone .hn-card {
+    position: static !important; width: auto !important; height: auto !important;
+    min-width: 0; max-width: none; max-height: none; min-height: 0; overflow: visible;
+    transform: none !important; padding: 10px 12px 12px; gap: 8px; flex-shrink: 0;
+  }
+  .hn-phone .hn-card-head { cursor: default; touch-action: auto; }
+  .hn-phone .hn-card-autor { font-size: .8rem; }
+  .hn-phone .hn-mini-btn { font-size: 1.05rem; padding: 9px 11px; color: rgba(0,0,0,.5); }
+  .hn-phone .hn-colors { gap: 9px; flex-wrap: wrap; }
+  .hn-phone .hn-color-sw { width: 28px; height: 28px; }
+  .hn-phone .hn-ta { font-size: 16px; min-height: 64px; flex: none; overflow: hidden; }   /* 16px: no iOS zoom */
+  .hn-phone .hn-card-foot { font-size: .74rem; }
+  .hn-phone .hn-resize-handle { display: none; }
+  .hn-phone .hn-empty { position: static; padding: 48px 16px; }
+  .hn-phone .hn-skeleton { flex-direction: column; padding: 0; }
+  .hn-phone .hn-skeleton-block { width: auto; height: 140px; }
+
+  /* share dialog */
+  .hn-modal { width: 100vw; max-width: none; max-height: 100dvh; height: 100dvh; border-radius: 0; }
+  .hn-modal-body { min-width: 0; flex: 1; }
+  .hn-modal .hn-user-list { max-height: none !important; }
+  .hn-user-row { padding: 11px 4px; }
+  .hn-user-row input[type="checkbox"] { width: 22px; height: 22px; flex-shrink: 0; }
+  .hn-form-ctrl { font-size: 16px; }
+  .hn-modal-foot .hn-btn-secondary { min-height: 44px; padding: 8px 22px; }
+  .hn-phone .me-1, .hn-phone .me-2, .hn-modal .me-1, .hn-modal .me-2 { margin-right: 7px; }
+  .hn-toast { left: 12px; right: 12px; bottom: calc(16px + env(safe-area-inset-bottom)); text-align: center; }
+}
