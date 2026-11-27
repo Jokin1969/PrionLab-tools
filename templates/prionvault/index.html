@@ -4991,7 +4991,7 @@
   <div class="pv-modal-inner" style="max-width:1200px;width:96vw;max-height:88vh;overflow:hidden;
                                      display:flex;flex-direction:column;padding:0;">
     <button class="pv-modal-close" data-vc-close aria-label="Cerrar">×</button>
-    <div style="padding:18px 22px 10px;border-bottom:1px solid #e5e7eb;">
+    <div class="pv-vc-head" style="padding:18px 22px 10px;border-bottom:1px solid #e5e7eb;">
       <h2 style="margin:0;font-size:17px;font-weight:700;color:#111827;">
         🔭 Vigilancia competitiva
       </h2>
@@ -5000,7 +5000,7 @@
         <em>«VC año»</em> (grupo <em>Vigilancia competitiva</em> del sidebar) con los artículos citados.
       </p>
     </div>
-    <div style="display:flex;flex:1;min-height:0;">
+    <div class="pv-vc-layout" style="display:flex;flex:1;min-height:0;">
       <nav id="pv-vc-years" style="width:190px;flex-shrink:0;border-right:1px solid #e5e7eb;
                                    overflow-y:auto;padding:10px 8px;background:#f9fafb;"></nav>
       <section id="pv-vc-body" style="flex:1;overflow-y:auto;padding:18px 24px;"></section>
@@ -5191,8 +5191,8 @@
   <div class="pv-modal-backdrop"
        onclick="document.getElementById('pv-help-modal').style.display='none'"></div>
   <div class="pv-modal-inner" style="max-width:900px;width:94vw;max-height:90vh;overflow-y:auto;padding:0;">
-    <div style="padding:22px 28px 18px;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:white;z-index:2;">
-      <div style="position:absolute;top:14px;right:52px;display:flex;align-items:center;gap:8px;">
+    <div class="pv-help-head" style="padding:22px 28px 18px;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:white;z-index:2;">
+      <div class="pv-help-dl" style="position:absolute;top:14px;right:52px;display:flex;align-items:center;gap:8px;">
         <button id="pv-help-pptx-btn" type="button" title="Descargar una presentación (PowerPoint) con toda la Ayuda"
                 style="height:28px;padding:0 12px;border-radius:14px;border:1px solid #e5e7eb;background:white;
                        font-size:12px;font-weight:600;color:#b45309;cursor:pointer;display:flex;
